@@ -31,8 +31,8 @@ O voSkill deve apoiar coordenadores na avaliação de estratégias para os próx
 
 O maior valor inicial está em combinar inventário revisável de competências, demandas de projeto, simulação e comparação explicável de alternativas. Integrações automáticas e autoajuste dos pesos ficam depois de validar a utilidade do fluxo central.
 
-- **Must:** cadastro/importação manual de pessoas, competências, evidências e interesses; cadastro de demandas; cenários futuros; geração de alternativas multiobjetivo; comparação de trade-offs; revisão humana; controles básicos de acesso e privacidade.
-- **Should:** assistência de LLM para extrair competências de textos fornecidos pelo usuário; inferências entre competências relacionadas com confiança explícita; fronteira de Pareto visualizada; exportação de resultados para discussão.
+- **RF-01 (Must):** Quando o coordenador preparar um cenário de planejamento, o sistema deve permitir cadastrar e revisar pessoas, competências, evidências, interesses e demandas, e comparar alternativas sob revisão humana e controles de acesso.
+- **RF-02 (Should):** Quando o usuário solicitar extração ou inferência de competências, o sistema deve apresentar sugestões com evidência e confiança para revisão humana; ao comparar cenários, deve exibir alternativas da fronteira de Pareto, seus trade-offs e permitir exportá-las.
 - **Could:** integrações com ferramentas de gestão de projetos; dados longitudinais de resultados; calibração experimental de pesos baseada em resultados observados.
 - **Won't no MVP:** alocação ou decisão de carreira automática; ingestão invisível de dados de RH ou comunicações; previsões individuais de desligamento; autoaprendizado de pesos sem governança e evidência; prescrição de contratação ou desligamento.
 
@@ -50,116 +50,139 @@ O maior valor inicial está em combinar inventário revisável de competências,
 
 Objetivo: permitir que o gestor mantenha um inventário rastreável, corrigível e apropriado ao planejamento, sem tratar inferências como fatos.
 
-### Task 1.1 — Registrar pessoas, competências, níveis e evidências
+### IMPLEMENT: Task 1.1 — Registrar pessoas, competências, níveis e evidências
 
 **Prioridade:** Must  
 **Tamanho:** M
 
 **Acceptance criteria:**
-- **Given** um usuário autorizado e uma pessoa cadastrada, **When** registrar uma competência, **Then** o sistema guarda skill, nível, origem/evidência, data de revisão e autoria, sem exigir que uma inferência seja registrada como fato.
-- **Given** uma competência registrada, **When** a pessoa ou um usuário autorizado corrigi-la, **Then** a versão vigente e o histórico de alteração ficam distinguíveis e a correção aparece nas consultas subsequentes.
+- **Given** a pessoa P-001, a escala configurada de 1 a 5 e o usuário autorizado U-001, **When** U-001 salvar a skill Kubernetes no nível 4, com evidência “Migração do cluster” e data de revisão 2026-11-08, **Then** a consulta de P-001 retorna exatamente esses valores, `originType=MANUAL` e `actorId=U-001`. [oráculo: valor]
+- **Given** uma competência nova e a escala configurada de 1 a 5, **When** um usuário autorizado enviar nível inválido 6 ou omitir a evidência obrigatória, **Then** o sistema rejeita o cadastro com erro de validação, identifica o campo inválido e não cria nenhum registro. [oráculo: valor]
+- **Given** que P-001 tem nível vigente 4 para uma skill, **When** P-001 ou U-001 autorizado corrigir o nível para 3, **Then** a leitura atual retorna nível 3 e o histórico preserva nível 4, ator e data da revisão. [oráculo: valor]
 
-### Task 1.2 — Extrair competências de texto com revisão humana
-
-**Prioridade:** Should  
-**Tamanho:** M
-
-**Acceptance criteria:**
-- **Given** um texto fornecido para análise, **When** a extração assistida estiver disponível, **Then** cada sugestão inclui competência, nível sugerido, confiança e trecho de evidência, identificados como sugestões não verificadas.
-- **Given** sugestões produzidas, **When** um usuário revisá-las, **Then** somente itens explicitamente aceitos ou editados passam a compor o inventário confirmado; rejeições não alteram o perfil confirmado.
-
-### Task 1.3 — Representar relações e inferências entre competências
+### IMPLEMENT: Task 1.2 — Extrair competências de texto com revisão humana
 
 **Prioridade:** Should  
 **Tamanho:** M
 
 **Acceptance criteria:**
-- **Given** uma relação configurada entre duas competências, **When** o sistema exibir uma competência relacionada inferida, **Then** mostra a origem da relação, a confiança e o rótulo de inferência, sem substituir o nível comprovado da pessoa.
-- **Given** nenhuma relação ou evidência suficiente, **When** consultar a aderência a uma competência, **Then** o sistema não apresenta um nível inferido como fato e informa a ausência de evidência.
+- **Given** que o texto-fonte contém “Migração do cluster Kubernetes” e o extrator de teste retorna Kubernetes, nível 4, confiança 0.92 e esse trecho exato, **When** um usuário autorizado solicitar a extração, **Then** a sugestão é salva como `pending_review` com esses valores e o perfil confirmado permanece inalterado. [oráculo: valor]
+- **Given** uma sugestão `pending_review`, **When** um revisor autorizado aceitar ou editar a sugestão, **Then** o estado passa respectivamente a `accepted` ou `edited` e somente os valores revisados entram no perfil confirmado. [oráculo: humano]
+- **Given** uma sugestão `pending_review`, **When** um revisor autorizado rejeitar a sugestão, **Then** o estado passa a `rejected` e o perfil confirmado permanece inalterado. [oráculo: valor]
+- **Given** texto vazio, falha do extrator ou revisor sem permissão, **When** o usuário solicitar extração ou revisão, **Then** o sistema retorna `EMPTY_SOURCE`, `PROVIDER_UNAVAILABLE` ou HTTP 403 conforme o caso, sem criar competência confirmada nem evento de revisão não autorizado. [oráculo: propriedade]
+
+### IMPLEMENT: Task 1.3 — Representar relações e inferências entre competências
+
+**Prioridade:** Should  
+**Tamanho:** M
+
+**Acceptance criteria:**
+- **Given** uma pessoa com uma competência confirmada e uma relação configurada para outra skill, **When** o usuário consultar a aderência relacionada, **Then** o resultado informa estado `inferred`, relação de origem e confiança entre 0 e 1, sem alterar o perfil confirmado. [oráculo: referencia]
+- **Given** uma relação ausente ou uma competência-fonte não confirmada para a pessoa, **When** o usuário consultar a aderência à skill-alvo, **Then** o sistema não retorna nível inferido e informa `insufficient_evidence`. [oráculo: propriedade]
+- **Given** uma relação que referencia uma skill inexistente, **When** o usuário tentar cadastrá-la, **Then** o sistema retorna `UNKNOWN_SKILL` e não grava a relação. [oráculo: valor]
 
 ## Epic 2 — Demandas e simulação de cenários futuros
 
 Objetivo: permitir que o coordenador modele a demanda por projeto e compare situações futuras sem alterar os dados confirmados do cenário-base.
 
-### Task 2.1 — Modelar demandas e horizonte de planejamento
+### IMPLEMENT: Task 2.1 — Modelar demandas e horizonte de planejamento
 
 **Prioridade:** Must  
 **Tamanho:** M
 
 **Acceptance criteria:**
-- **Given** um projeto e um horizonte de planejamento, **When** o usuário informar competências requeridas, níveis, período e carga, **Then** o sistema valida os campos obrigatórios e apresenta a demanda de forma editável.
-- **Given** uma demanda incompleta ou sem período válido, **When** o usuário tentar salvá-la, **Then** o sistema identifica os campos inválidos e não a usa silenciosamente na otimização.
+- **Given** o projeto P-001, horizonte mensal 2026-01 a 2026-06, escala de skill de 1 a 5 e unidade de carga `hours`, **When** um usuário autorizado salvar Kubernetes nível 3, período 2026-01 e carga 40, **Then** a leitura retorna projeto, skill, nível, período, carga 40 e unidade `hours`, e a demanda permanece editável. [oráculo: valor]
+- **Given** uma demanda com nível 6, carga negativa, skill inexistente ou período fora do horizonte, **When** o usuário tentar salvá-la, **Then** o sistema rejeita o registro, lista o campo inválido e não cria uma demanda parcial. [oráculo: valor]
+- **Given** que a unidade de carga configurada é `hours`, **When** o usuário enviar a unidade não suportada `widgets`, **Then** o sistema rejeita a solicitação com `INVALID_LOAD_UNIT` e não cria uma linha de demanda. [oráculo: valor]
+- **Given** um projeto com horizonte de seis meses, **When** o usuário adicionar demandas mensais válidas dentro desse intervalo, **Then** cada período é associado ao projeto e nenhuma demanda fora do horizonte aparece como elegível para otimização. [oráculo: propriedade]
 
-### Task 2.2 — Criar e comparar cenários
+### IMPLEMENT: Task 2.2 — Criar e comparar cenários
 
 **Prioridade:** Must  
 **Tamanho:** M
 
 **Acceptance criteria:**
-- **Given** um cenário-base, **When** o usuário criar um cenário alternativo com mudança de demanda, disponibilidade ou saída de especialista, **Then** o sistema preserva o cenário-base e registra as diferenças do cenário alternativo.
-- **Given** dois ou mais cenários válidos, **When** o usuário compará-los, **Then** as premissas e os dados alterados são visíveis junto aos resultados, e cenários com dados insuficientes são sinalizados.
+- **Given** o cenário-base B-001 com snapshot S-001, **When** um usuário autorizado criar um cenário alternativo alterando demanda ou disponibilidade, **Then** o novo cenário referencia B-001, registra autor/data e os deltas, e o snapshot S-001 permanece inalterado. [oráculo: valor]
+- **Given** os cenários válidos S-001 e S-002, **When** o usuário compará-los, **Then** a resposta identifica cada cenário e apresenta as premissas e os valores diferentes para cada período sem sobrescrever dados de origem. [oráculo: valor]
+- **Given** um cenário sem demanda ou disponibilidade obrigatória, **When** o usuário solicitar comparação, **Then** esse cenário é marcado `incomplete` com a lista dos campos ausentes e nenhuma métrica numérica é inventada para ele. [oráculo: propriedade]
 
 ## Epic 3 — Alternativas multiobjetivo para desenvolvimento e alocação
 
 Objetivo: gerar alternativas viáveis e comparáveis que explicitem conflitos entre objetivos, sem declarar uma alternativa universalmente ótima.
 
-### Task 3.1 — Gerar alternativas de alocação, capacitação e mentoria
+### IMPLEMENT: Task 3.1 — Gerar alternativas de alocação, capacitação e mentoria
 
 **Prioridade:** Must  
 **Tamanho:** L
 
 **Acceptance criteria:**
-- **Given** dados válidos de competências, disponibilidade e demanda, **When** o usuário solicitar alternativas, **Then** o sistema retorna mais de uma estratégia viável quando houver soluções distintas, e cada estratégia identifica alocação, treinamento, mentoria ou rotação propostos.
-- **Given** restrições incompatíveis ou ausência de solução viável, **When** a otimização terminar, **Then** o sistema informa a inviabilidade e as restrições conflitantes conhecidas, sem apresentar uma proposta inválida como recomendação.
+- **Given** o snapshot S-001 com dois perfis confirmados, demanda de projeto, disponibilidade válida e seed 42, **When** o NSGA-II concluir com pelo menos duas estratégias viáveis não dominadas, **Then** cada alternativa tem status `feasible`, alocação, ações de desenvolvimento, métricas separadas por objetivo e metadados de execução referenciando S-001 e seed 42. [oráculo: valor]
+- **Given** as alternativas retornadas A-001 e A-002, **When** a dominância for calculada, **Then** nenhuma domina a outra considerando todos os objetivos configurados. [oráculo: propriedade]
+- **Given** todas as atribuições candidatas violam restrições duras, **When** NSGA-II terminar, **Then** o resultado tem status `infeasible`, lista os IDs das restrições conflitantes e a lista de alternativas viáveis fica vazia. [oráculo: valor]
+- **Given** A-003 atribui 48 horas a P-001 quando há somente 40 disponíveis, **When** a viabilidade for avaliada, **Then** o sistema rejeita A-003 com violação `capacity_exceeded` e a exclui das alternativas viáveis. [oráculo: valor]
 
-### Task 3.2 — Comparar objetivos e trade-offs da fronteira de Pareto
+### IMPLEMENT: Task 3.2 — Comparar objetivos e trade-offs da fronteira de Pareto
 
 **Prioridade:** Must  
 **Tamanho:** L
 
 **Acceptance criteria:**
-- **Given** alternativas não dominadas, **When** o usuário abrir a comparação, **Then** pode comparar cobertura de competências, desenvolvimento, aderência a interesses, carga, risco de dependência, custo e estabilidade, conforme os dados disponíveis.
-- **Given** uma métrica sem dados suficientes ou uma alternativa que melhora um objetivo e piora outro, **When** os resultados forem apresentados, **Then** a limitação ou o trade-off é visível e o sistema não reduz silenciosamente a comparação a um único score.
+- **Given** A-001 e A-002 têm vetores de objetivos conhecidos, **When** um usuário autorizado abrir a comparação, **Then** cobertura, desenvolvimento, aderência a interesses, carga, bus factor, custo e estabilidade são exibidos separadamente com seus valores de origem. [oráculo: valor]
+- **Given** A-001 melhora cobertura mas piora carga em relação a A-002, **When** as alternativas forem comparadas, **Then** ambas permanecem visíveis, o trade-off é identificado e nenhum score agregado não solicitado as ordena. [oráculo: propriedade]
+- **Given** A-002 está sem entradas de custo, **When** o usuário compará-la, **Then** custo é retornado como `unavailable`, motivo `missing_cost_input`, sem valor numérico. [oráculo: propriedade]
+- **Given** a comparação referencia a alternativa inexistente A-404, **When** o usuário solicitar a comparação, **Then** o sistema rejeita a solicitação com `UNKNOWN_ALTERNATIVE` e não retorna resultado de comparação. [oráculo: valor]
 
-### Task 3.3 — Respeitar carga e restrições declaradas
+### IMPLEMENT: Task 3.3 — Respeitar carga e restrições declaradas
 
 **Prioridade:** Must  
 **Tamanho:** M
 
 **Acceptance criteria:**
-- **Given** limites de disponibilidade e carga declarados, **When** uma estratégia for avaliada, **Then** violações são rejeitadas ou destacadas conforme a regra configurada e não são ocultadas por uma pontuação agregada.
-- **Given** as mesmas entradas, restrições e configuração do algoritmo, **When** a execução for repetida, **Then** a configuração usada e informação suficiente para reproduzir ou auditar o resultado ficam registradas.
+- **Given** P-001 tem disponibilidade de 40 horas no período 2026-01 e A-001 aloca 48 horas, **When** a estratégia for validada, **Then** A-001 é inviável com violação `capacity_exceeded` e não aparece entre as alternativas viáveis. [oráculo: valor]
+- **Given** A-002 viola uma preferência de interesse mas nenhuma restrição dura, **When** a estratégia for avaliada, **Then** A-002 permanece viável e a preferência é reportada como métrica separada, não como erro de capacidade. [oráculo: propriedade]
+- **Given** snapshot, versão do algoritmo, configuração, seed 42 e ambiente idênticos, **When** a otimização for executada duas vezes, **Then** os metadados coincidem e o hash canônico das alternativas é igual. [oráculo: metamorfica]
+- **Given** seed negativa -1, **When** o usuário solicitar uma execução, **Then** o sistema rejeita a solicitação com `INVALID_SEED` e não cria registro de execução. [oráculo: valor]
 
 ## Epic 4 — Dashboard explicável e apoio à decisão humana
 
 Objetivo: tornar alternativas, dados de origem, incertezas e limitações compreensíveis para uma discussão de planejamento.
 
-### Task 4.1 — Visualizar competências, lacunas e riscos
+### IMPLEMENT: Task 4.1 — Visualizar competências, lacunas e riscos
 
 **Prioridade:** Must  
 **Tamanho:** M
 
 **Acceptance criteria:**
-- **Given** um cenário com competências e demandas, **When** o gestor abrir o mapa de competências, **Then** consegue distinguir níveis confirmados, inferências, evidências ausentes e demandas não cobertas.
-- **Given** uma competência crítica coberta por poucas pessoas, **When** o painel de risco for exibido, **Then** apresenta o cálculo e as pessoas/competências que contribuem para o indicador, respeitando as permissões de acesso.
+- **Given** o cenário S-001 contém P-001 com Java confirmado nível 4, OpenShift inferido confiança 0.65 e demanda Cloud sem cobertura confirmada, **When** um gestor autorizado abrir o mapa, **Then** os três estados são visualmente distintos e a cobertura conta apenas competências confirmadas. [oráculo: valor]
+- **Given** o limiar configurado para risco de dependência da skill Kubernetes é 2 pessoas confirmadas e o cenário tem 1 pessoa confirmada, **When** o painel de risco for exibido, **Then** mostra a contagem 1, o limiar 2, a skill, a pessoa e as evidências consideradas, sem depender de um limiar universal fixo. [oráculo: valor]
+- **Given** a inferência OpenShift está pendente de revisão, **When** o mapa calcular a cobertura, **Then** ela não é contabilizada como competência confirmada e aparece com confiança 0.65 e estado de revisão. [oráculo: propriedade]
+- **Given** o mapa solicitado referencia o cenário inexistente S-404, **When** o usuário tentar abri-lo, **Then** o sistema rejeita a solicitação com `SCENARIO_NOT_FOUND` e não exibe dados de um cenário anterior como se fossem atuais. [oráculo: valor]
 
-### Task 4.2 — Explicar e comparar alternativas
-
-**Prioridade:** Must  
-**Tamanho:** M
-
-**Acceptance criteria:**
-- **Given** uma alternativa selecionada, **When** o usuário solicitar sua explicação, **Then** o sistema apresenta métricas, premissas, evidências e mudanças que justificam seus trade-offs, distinguindo cálculo determinístico de texto explicativo gerado por LLM.
-- **Given** uma explicação gerada, **When** faltarem dados ou a justificativa não puder ser vinculada aos resultados, **Then** a incerteza é declarada e nenhuma alegação factual sem suporte é apresentada como evidência.
-
-### Task 4.3 — Proteger dados e manter supervisão humana
+### IMPLEMENT: Task 4.2 — Explicar e comparar alternativas
 
 **Prioridade:** Must  
 **Tamanho:** M
 
 **Acceptance criteria:**
-- **Given** um usuário sem permissão para visualizar dados pessoais de uma pessoa, **When** acessar telas ou exportações do sistema, **Then** os dados protegidos não são expostos e o acesso negado não revela o conteúdo.
-- **Given** qualquer alternativa produzida, **When** o gestor a consultar, **Then** o sistema a apresenta como apoio à decisão, exige avaliação humana antes de uso operacional e não executa alocação ou decisão de carreira automaticamente.
+- **Given** a alternativa A-001 contém métricas coverage 0.82, load 0.70 e cost 1200, snapshot S-001 e evidências E-001/E-002, **When** um usuário autorizado solicitar explicação, **Then** a resposta identifica A-001/S-001, reporta esses valores sem alterá-los e associa cada afirmação factual à métrica/evidência correspondente. [oráculo: referencia]
+- **Given** a explicação contém texto narrativo gerado por LLM e métricas calculadas deterministicamente, **When** o resultado for apresentado, **Then** as duas origens são rotuladas separadamente e o LLM não pode modificar os valores do vetor de objetivos. [oráculo: propriedade]
+- **Given** uma métrica de A-001 não tem dados de entrada, **When** a explicação for gerada, **Then** a métrica aparece `unavailable` com o motivo e não recebe valor numérico. [oráculo: propriedade]
+- **Given** uma afirmação narrativa não possui evidência vinculada ou o serviço LLM retorna erro, **When** a explicação for gerada, **Then** `unsupportedClaims` fica vazio, a resposta declara `missing_evidence` ou `error.code=NARRATIVE_UNAVAILABLE` e as métricas determinísticas permanecem disponíveis. [oráculo: propriedade]
+
+### IMPLEMENT: Task 4.3 — Proteger dados e manter supervisão humana
+
+**Prioridade:** Must  
+**Tamanho:** M
+
+**Acceptance criteria:**
+- **Given** U-999 não tem permissão para visualizar o perfil de P-001, **When** U-999 solicitar o perfil ou sua exportação, **Then** a resposta é HTTP 403, não contém campos pessoais de P-001 e registra a tentativa sem copiar o conteúdo protegido para o log. [oráculo: propriedade]
+- **Given** A-001 foi gerada pelo otimizador, **When** um gestor a consultar, **Then** é identificada como apoio à decisão e exige aprovação humana antes do uso operacional. [oráculo: humano]
+- **Given** qualquer usuário solicitar uma alocação final ou decisão de carreira automática, **When** a solicitação for processada, **Then** o sistema rejeita a execução e não altera as alocações nem o perfil de carreira da pessoa. [oráculo: propriedade]
+
+**Decomposição da tarefa:**
+
+- Task 4.3.1 — Aplicar autorização e auditar acesso a perfis.
+- Task 4.3.2 — Exigir aprovação humana antes do uso operacional.
 
 **Requisitos não funcionais**
 
@@ -167,7 +190,7 @@ Objetivo: tornar alternativas, dados de origem, incertezas e limitações compre
 - **Transparência:** mostrar origem, data, confiança e estado de revisão de dados; diferenciar observação, inferência e recomendação; disponibilizar premissas, objetivos e restrições considerados.
 - **Confiabilidade:** validar entradas e restrições; indicar falhas ou ausência de solução sem fabricar resultados; registrar configuração e versão dos dados usadas em cada execução.
 - **Usabilidade e acessibilidade:** permitir comparar cenários e alternativas sem depender exclusivamente de cor; apresentar definições das métricas e linguagem adequada a gestores e participantes.
-- **Desempenho:** estabelecer metas após medir o volume esperado de pessoas, competências, projetos e alternativas no piloto; o MVP deve comunicar progresso e permitir cancelamento de execuções longas.
+- **NFR-01 — Desempenho:** Quando uma execução de otimização ultrapassar a meta de resposta configurada após a medição do piloto, o sistema deve exibir progresso e permitir o cancelamento sem persistir um resultado parcial como concluído.
 
 **Fora de escopo do MVP**
 

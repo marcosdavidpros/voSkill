@@ -1,0 +1,1 @@
+"""voSkill application package."""

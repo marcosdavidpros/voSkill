@@ -148,3 +148,12 @@ Oracle  LLM Adapter   NetworkX
           ▼
 
  Dashboard
+```
+
+## Consequences
+
+- Reutilizar Oracle reduz a complexidade operacional inicial e evita manter um segundo banco dedicado ao grafo durante o MVP.
+- O grafo NetworkX é mantido em memória e deve ser reconstruído a partir dos dados persistidos em Oracle; consumo de memória e tempo de reconstrução precisam ser avaliados com dados representativos antes do piloto.
+- Neo4j permanece uma opção futura caso consultas, volume ou desempenho demonstrem que o modelo relacional mais o grafo em memória não são suficientes.
+- O provedor LLM continua sujeito à homologação e à validação de privacidade, segurança e disponibilidade; a abstração evita acoplamento prematuro a um fornecedor.
+- A integração entre API, persistência, otimização e dashboard exige contratos explícitos e testes de interoperabilidade.

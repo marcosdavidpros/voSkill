@@ -190,11 +190,38 @@ Objetivo: tornar alternativas, dados de origem, incertezas e limitações compre
 - **Transparência:** mostrar origem, data, confiança e estado de revisão de dados; diferenciar observação, inferência e recomendação; disponibilizar premissas, objetivos e restrições considerados.
 - **Confiabilidade:** validar entradas e restrições; indicar falhas ou ausência de solução sem fabricar resultados; registrar configuração e versão dos dados usadas em cada execução.
 - **Usabilidade e acessibilidade:** permitir comparar cenários e alternativas sem depender exclusivamente de cor; apresentar definições das métricas e linguagem adequada a gestores e participantes.
-- **NFR-01 — Desempenho:** Quando uma execução de otimização ultrapassar a meta de resposta configurada após a medição do piloto, o sistema deve exibir progresso e permitir o cancelamento sem persistir um resultado parcial como concluído.
+- **NFR-PERF-01 — Performance efficiency:** Após medir o workload do piloto, configurar metas de response time; registrar p95, throughput, memória, falhas, versão e configuração. Exibir progresso e permitir cancelar uma execução sem persistir resultado parcial como concluído. Não fixar limites numéricos antes da baseline.
+
+**Mapa de aplicabilidade NFR — ISO/IEC 25010**
+
+| Dimensão | Mapeamento | Escopo |
+|---|---|---|
+| Functional suitability | Epics 1–4: inventário, cenários, otimização e dashboard | MVP |
+| Performance efficiency | NFR-PERF-01; Epic 3 mede resposta/recursos após baseline do piloto | MVP, metas após baseline |
+| Compatibility | NFR-COMP-01; Epic 5, conectores com fontes aprovadas e mapeamentos versionados | Pós-MVP |
+| Interaction capability | NFR-ACC-01; Task 4.1.1, navegação por teclado, estados textuais e nomes acessíveis | MVP |
+| Reliability | NFR-REL-01; Task 3.1.2, falha não persiste resultado parcial como concluído | MVP |
+| Security | NFR-SEC-01; Task 4.3.1, autorização, exportação e auditoria sem PII em logs | MVP |
+| Maintainability | ADR-0001, arquitetura modular; contratos SkillSuggestion e OptimizationRun | MVP |
+| Flexibility | ADR-0001, adapters de LLM; Epics 2–3, cenários e parâmetros de objetivo configuráveis | MVP |
+| Safety | ADR-0002 e Task 4.3.2, revisão/aprovação humana e sem decisão automática sobre pessoas | MVP |
+
+**NFRs genéricos adicionais**
+
+- **Security:** NFR-SEC-01.
+- **Reliability:** NFR-REL-01.
+- **Performance:** NFR-PERF-01; os limites serão definidos após a baseline, não presumidos.
+- **Accessibility:** NFR-ACC-01.
+- **Scalability:** NFR-SCL-01, Epic 5; adiado até haver workload representativo e metas acordadas após o piloto.
+
+**Epic 5 pós-MVP — Integrações e escalabilidade além do piloto**
+
+Epic 5 depende da conclusão dos Epics 1–4 e da aprovação da baseline de workload do piloto. Task 5.1 implementará conectores aprovados com contratos/mapeamentos versionados e consentimento; Task 5.2 medirá escalabilidade além do piloto a partir da baseline. Não iniciar integrações sem autorização e contratos de dados aprovados; não declarar conformidade de escala antes da medição.
 
 **Fora de escopo do MVP**
 
 - Conectores automáticos para Jira, Azure DevOps, RH, transcrições, e-mail ou repositórios.
+- Escalabilidade para volumes acima do workload acordado para o piloto; será medida e planejada no Epic 5 a partir de uma baseline real.
 - Decisões automáticas de contratação, promoção, remuneração, desligamento ou alocação final.
 - Predição de desempenho, propensão a desligamento ou avaliação individual baseada em dados não revisados.
 - Evolução automática dos pesos do fitness. Esta hipótese exige dados de resultados, governança, avaliação de vieses e validação antes de entrar em escopo.

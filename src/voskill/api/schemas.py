@@ -1,0 +1,153 @@
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+
+class DemandPayload(BaseModel):
+    skill_id: str = Field(min_length=1)
+    proficiency_level: int = Field(ge=1, le=5)
+    period: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    load_amount: Decimal = Field(ge=0)
+    load_unit: str = Field(min_length=1)
+
+    @property
+    def period_start(self) -> date:
+        year, month = (int(value) for value in self.period.split("-"))
+        return date(year, month, 1)
+
+
+class CompetencyPayload(BaseModel):
+    skill_id: str = Field(min_length=1)
+    proficiency_level: int = Field(ge=1, le=5)
+    evidence: str = Field(min_length=1)
+    review_date: date
+
+
+class CompetencyCorrectionPayload(BaseModel):
+    proficiency_level: int = Field(ge=1, le=5)
+    evidence: str = Field(min_length=1)
+    review_date: date
+
+
+class ExtractionPayload(BaseModel):
+    source_text: str = Field(max_length=20000)
+
+
+class ExtractedCompetency(BaseModel):
+    skill_name: str = Field(min_length=1, max_length=150)
+    proficiency_level: int = Field(ge=1, le=5)
+    confidence: float = Field(ge=0, le=1)
+    evidence_span: str = Field(min_length=1, max_length=4000)
+
+
+class SuggestionReviewPayload(BaseModel):
+    decision: Literal["accept", "edit", "reject"]
+    reviewed_level: int | None = Field(default=None, ge=1, le=5)
+    reviewed_evidence: str | None = Field(default=None, min_length=1)
+
+
+class SkillRelationPayload(BaseModel):
+    source_skill_id: str = Field(min_length=1)
+    target_skill_id: str = Field(min_length=1)
+    confidence: float = Field(ge=0, le=1)
+
+
+class DemandResponse(BaseModel):
+    demand_id: str
+    project_id: str
+    skill_id: str
+    proficiency_level: int
+    period: str
+    load_amount: float
+    load_unit: str
+    actor_id: str
+
+
+class CompetencyResponse(BaseModel):
+    competency_id: str
+    person_id: str
+    skill_id: str
+    skill_name: str
+    proficiency_level: int
+    evidence: str
+    origin_type: str
+    actor_id: str
+    review_date: date
+
+
+class SuggestionResponse(BaseModel):
+    suggestion_id: str
+    person_id: str
+    skill_name: str
+    proficiency_level: int
+    confidence: float
+    evidence_span: str
+    source_sha256: str
+    status: str
+    actor_id: str
+    created_at: datetime
+
+
+class SuggestionReviewResponse(SuggestionResponse):
+    reviewed_by: str
+    reviewed_at: datetime
+    reviewed_level: int | None
+    reviewed_evidence: str | None
+    competency_id: str | None = None
+
+
+class SkillRelationResponse(BaseModel):
+    relation_id: str
+    source_skill_id: str
+    target_skill_id: str
+    confidence: float
+    active: bool
+    actor_id: str
+
+
+class SkillInferenceResponse(BaseModel):
+    status: Literal["inferred", "insufficient_evidence"]
+    person_id: str
+    target_skill_id: str
+    inferred_level: int | None
+    source_skill_id: str | None
+    relation_id: str | None = Field(serialization_alias="relationId")
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    reason: Literal["insufficient_evidence"] | None
+
+
+class AlternativePayload(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    deltas: dict[str, object] = Field(min_length=1)
+
+
+class AlternativeResponse(BaseModel):
+    scenario_id: str
+    base_scenario_id: str
+    project_id: str
+    snapshot_id: str
+    name: str
+    actor_id: str
+    created_at: datetime
+    deltas: dict[str, object]
+
+
+class OptimizationRunPayload(BaseModel):
+    snapshot: dict[str, object]
+    seed: int
+    population_size: int = Field(default=64, ge=2, le=10000)
+    generations: int = Field(default=40, ge=1, le=10000)
+
+
+class OptimizationRunResponse(BaseModel):
+    run_id: str
+    snapshot_hash: str
+    algorithm_version: str
+    configuration: dict[str, object]
+    seed: int
+    alternatives_hash: str
+    result: dict[str, object]
+    actor_id: str
+    created_at: datetime

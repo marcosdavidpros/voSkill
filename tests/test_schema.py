@@ -142,3 +142,28 @@ def test_skill_relation_migration_has_skill_foreign_keys_and_confidence_check() 
     assert all(name.startswith("VSK_") for name in (*created_names, *constraint_names))
     assert all(len(name) <= 30 for name in (*created_names, *constraint_names))
     assert not re.search(r"\bDROP\s+(TABLE|TRIGGER|SEQUENCE)\b", ddl)
+
+
+def test_optimization_run_migration_persists_reproducibility_metadata() -> None:
+    migration_file = ROOT / "database" / "oracle" / "006_optimization_runs.sql"
+
+    assert migration_file.is_file()
+    ddl = migration_file.read_text(encoding="utf-8").upper()
+
+    assert re.search(r"CREATE\s+TABLE\s+VSK_OPTIMIZATION_RUNS\b", ddl)
+    for column in (
+        "RUN_ID",
+        "SNAPSHOT_HASH",
+        "ALGORITHM_VERSION",
+        "CONFIGURATION_JSON",
+        "SEED",
+        "ALTERNATIVES_HASH",
+        "RESULT_JSON",
+        "ACTOR_ID",
+        "CREATED_AT",
+    ):
+        assert column in ddl
+    assert re.search(r"CHECK\s*\(\s*SEED\s*>=\s*0\s*\)", ddl)
+    assert "SESSION_USER" in ddl
+    assert "ITB2CTRF" in ddl
+    assert not re.search(r"\bDROP\s+(TABLE|TRIGGER|SEQUENCE)\b", ddl)

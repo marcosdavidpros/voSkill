@@ -10,6 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115,<1",
     "oracledb>=2.5,<4",
+    "pymoo>=0.6.1.5,<0.7",
     "python-dotenv>=1.0,<2",
     "uvicorn>=0.34,<1",
 ]

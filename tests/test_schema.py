@@ -116,3 +116,29 @@ def test_suggestion_review_migration_keeps_reviewed_values_and_competency_link()
     )
     assert "-20010" in ddl
     assert "-20012" in ddl
+
+
+def test_skill_relation_migration_has_skill_foreign_keys_and_confidence_check() -> None:
+    migration_file = ROOT / "database" / "oracle" / "005_skill_relations.sql"
+
+    assert migration_file.is_file()
+    ddl = migration_file.read_text(encoding="utf-8").upper()
+
+    assert re.search(r"CREATE\s+TABLE\s+VSK_SKILL_RELATIONS\b", ddl)
+    assert re.search(r"SOURCE_SKILL_ID.*REFERENCES\s+VSK_SKILLS", ddl, flags=re.DOTALL)
+    assert re.search(r"TARGET_SKILL_ID.*REFERENCES\s+VSK_SKILLS", ddl, flags=re.DOTALL)
+    assert re.search(r"CONFIDENCE\s+BETWEEN\s+0\s+AND\s+1", ddl)
+    assert "ACTOR_ID" in ddl
+    assert "SESSION_USER" in ddl
+    assert "ITB2CTRF" in ddl
+
+    created_names = re.findall(
+        r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|INDEX|TRIGGER)\s+([A-Z0-9_]+)",
+        ddl,
+        flags=re.MULTILINE,
+    )
+    constraint_names = re.findall(r"\bCONSTRAINT\s+([A-Z0-9_]+)", ddl)
+    assert created_names
+    assert all(name.startswith("VSK_") for name in (*created_names, *constraint_names))
+    assert all(len(name) <= 30 for name in (*created_names, *constraint_names))
+    assert not re.search(r"\bDROP\s+(TABLE|TRIGGER|SEQUENCE)\b", ddl)

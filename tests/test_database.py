@@ -16,6 +16,7 @@ from voskill.database import (
     ScenarioRepository,
     open_oracle_connection,
 )
+from voskill.skill_relations import RelationError, SkillRelationRepository
 from voskill.suggestion_review import SuggestionReviewRepository as SuggestionRepository
 from voskill.suggestions import SuggestionError
 
@@ -33,6 +34,7 @@ class FakeCursor:
         )
         self.base_scenario = ("B-001", "P-001", "S-001")
         self.skill_exists = True
+        self.skill_ids = {"SKILL-1"}
         self.demand_rows = demand_rows or []
         self.statements: list[tuple[str, dict]] = []
         self.current_one = None
@@ -60,6 +62,8 @@ class FakeCursor:
         self.skill_insert_params: dict | None = None
         self.competency_update_params: dict | None = None
         self.history_insert_params: dict | None = None
+        self.relation_insert_params: dict | None = None
+        self.inference_record: tuple | None = None
         self.rowcount = 1
 
     def __enter__(self) -> Self:
@@ -82,6 +86,12 @@ class FakeCursor:
             self.current_one = (bound.get("person_id"),) if self.person_exists else None
         elif "FROM VSK_SKILL_SUGGESTIONS" in normalized:
             self.current_one = self.suggestion_record
+        elif "FROM VSK_SKILL_RELATIONS" in normalized:
+            self.current_one = (
+                self.inference_record
+                if "VSK_PERSON_COMPETENCIES" in normalized
+                else None
+            )
         elif "FROM VSK_PERSON_COMPETENCIES" in normalized:
             if normalized.startswith("SELECT COMPETENCY_ID FROM"):
                 self.current_one = None
@@ -94,7 +104,12 @@ class FakeCursor:
             else:
                 self.current_one = self.current_competency
         elif "FROM VSK_SKILLS" in normalized:
-            self.current_one = ("SKILL-1", "Kubernetes") if self.skill_exists else None
+            skill_id = bound.get("skill_id")
+            self.current_one = (
+                (skill_id, "Kubernetes" if skill_id == "SKILL-1" else "OpenShift")
+                if self.skill_exists and skill_id in self.skill_ids
+                else None
+            )
         elif normalized.startswith("SELECT DEMAND_ID"):
             self.current_rows = self.demand_rows
         elif normalized.startswith("INSERT INTO VSK_PROJECT_DEMANDS"):
@@ -105,6 +120,8 @@ class FakeCursor:
             self.competency_insert_params = bound
         elif normalized.startswith("INSERT INTO VSK_SKILL_SUGGESTIONS"):
             self.suggestion_insert_params = bound
+        elif normalized.startswith("INSERT INTO VSK_SKILL_RELATIONS"):
+            self.relation_insert_params = bound
         elif normalized.startswith("UPDATE VSK_SKILL_SUGGESTIONS"):
             self.suggestion_update_params = bound
         elif normalized.startswith("INSERT INTO VSK_SKILLS"):
@@ -767,6 +784,115 @@ def test_already_reviewed_suggestion_cannot_be_applied_twice() -> None:
     assert cursor.suggestion_update_params is None
     assert cursor.competency_insert_params is None
     assert connection.commit_count == 0
+
+
+def test_create_skill_relation_persists_confidence_and_actor() -> None:
+    cursor = FakeCursor()
+    cursor.skill_ids = {"SKILL-1", "SKILL-2"}
+    connection = FakeConnection(cursor)
+    repository = SkillRelationRepository(connection_factory=lambda: connection)
+
+    relation = repository.create(
+        source_skill_id="SKILL-1",
+        target_skill_id="SKILL-2",
+        confidence=0.65,
+        actor_id="U-001",
+    )
+
+    assert relation["source_skill_id"] == "SKILL-1"
+    assert relation["target_skill_id"] == "SKILL-2"
+    assert relation["confidence"] == 0.65
+    assert relation["actor_id"] == "U-001"
+    assert cursor.relation_insert_params is not None
+    assert cursor.relation_insert_params["confidence"] == 0.65
+    assert connection.commit_count == 1
+
+
+def test_unknown_source_skill_is_rejected_without_storing_relation() -> None:
+    cursor = FakeCursor()
+    connection = FakeConnection(cursor)
+    repository = SkillRelationRepository(connection_factory=lambda: connection)
+
+    with pytest.raises(RelationError) as raised:
+        repository.create(
+            source_skill_id="SKILL-404",
+            target_skill_id="SKILL-1",
+            confidence=0.65,
+            actor_id="U-001",
+        )
+
+    assert raised.value.code == "UNKNOWN_SKILL"
+    assert cursor.relation_insert_params is None
+    assert connection.commit_count == 0
+
+
+def test_confidence_above_one_is_rejected_without_storing_relation() -> None:
+    cursor = FakeCursor()
+    connection = FakeConnection(cursor)
+    repository = SkillRelationRepository(connection_factory=lambda: connection)
+
+    with pytest.raises(RelationError) as raised:
+        repository.create(
+            source_skill_id="SKILL-1",
+            target_skill_id="SKILL-2",
+            confidence=1.2,
+            actor_id="U-001",
+        )
+
+    assert raised.value.code == "INVALID_CONFIDENCE"
+    assert cursor.relation_insert_params is None
+    assert connection.commit_count == 0
+
+
+def test_infer_for_person_returns_source_level_and_relation_provenance() -> None:
+    cursor = FakeCursor()
+    cursor.inference_record = ("REL-001", "SKILL-1", "SKILL-2", 0.65, 4)
+    connection = FakeConnection(cursor)
+    repository = SkillRelationRepository(connection_factory=lambda: connection)
+
+    inference = repository.infer_for_person("P-001", "SKILL-2")
+
+    assert inference == {
+        "status": "inferred",
+        "person_id": "P-001",
+        "target_skill_id": "SKILL-2",
+        "inferred_level": 4,
+        "source_skill_id": "SKILL-1",
+        "relation_id": "REL-001",
+        "confidence": 0.65,
+        "reason": None,
+    }
+    query = next(
+        statement
+        for statement, _ in cursor.statements
+        if "FROM VSK_SKILL_RELATIONS" in statement
+    )
+    assert "ACTIVE_FLAG = 'Y'" in query
+    assert "VSK_PERSON_COMPETENCIES" in query
+    assert connection.commit_count == 0
+    assert connection.rollback_count == 0
+    assert cursor.competency_insert_params is None
+
+
+def test_infer_for_person_without_relation_or_confirmed_source_is_insufficient() -> None:
+    cursor = FakeCursor()
+    connection = FakeConnection(cursor)
+    repository = SkillRelationRepository(connection_factory=lambda: connection)
+
+    inference = repository.infer_for_person("P-001", "SKILL-2")
+
+    assert inference == {
+        "status": "insufficient_evidence",
+        "person_id": "P-001",
+        "target_skill_id": "SKILL-2",
+        "inferred_level": None,
+        "source_skill_id": None,
+        "relation_id": None,
+        "confidence": None,
+        "reason": "insufficient_evidence",
+    }
+    assert connection.commit_count == 0
+    assert cursor.competency_insert_params is None
 
 
 def test_create_alternative_reuses_immutable_snapshot_and_records_deltas() -> None:

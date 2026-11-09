@@ -16,6 +16,7 @@ from .database import (
     ScenarioError,
     ScenarioRepository,
 )
+from .skill_relations import RelationError, SkillRelationRepository
 from .suggestion_review import SuggestionReviewRepository
 from .suggestions import SuggestionError
 
@@ -68,6 +69,12 @@ class SuggestionReviewPayload(BaseModel):
     decision: Literal["accept", "edit", "reject"]
     reviewed_level: int | None = Field(default=None, ge=1, le=5)
     reviewed_evidence: str | None = Field(default=None, min_length=1)
+
+
+class SkillRelationPayload(BaseModel):
+    source_skill_id: str = Field(min_length=1)
+    target_skill_id: str = Field(min_length=1)
+    confidence: float = Field(ge=0, le=1)
 
 
 class CompetencyExtractor(Protocol):
@@ -123,6 +130,26 @@ class SuggestionReviewResponse(SuggestionResponse):
     competency_id: str | None = None
 
 
+class SkillRelationResponse(BaseModel):
+    relation_id: str
+    source_skill_id: str
+    target_skill_id: str
+    confidence: float
+    active: bool
+    actor_id: str
+
+
+class SkillInferenceResponse(BaseModel):
+    status: Literal["inferred", "insufficient_evidence"]
+    person_id: str
+    target_skill_id: str
+    inferred_level: int | None
+    source_skill_id: str | None
+    relation_id: str | None = Field(serialization_alias="relationId")
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    reason: Literal["insufficient_evidence"] | None
+
+
 class AlternativePayload(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     deltas: dict[str, object] = Field(min_length=1)
@@ -176,6 +203,15 @@ def get_competency_reviewer(
     raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
 
 
+def get_skill_relation_editor(
+    request: Request,
+    actor_id: Annotated[str, Depends(get_actor_id)],
+) -> str:
+    if getattr(request.state, "can_manage_skill_relations", False) is True:
+        return actor_id
+    raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
+
+
 def get_demand_repository() -> DemandRepository:
     return DemandRepository()
 
@@ -194,6 +230,10 @@ def get_competency_extractor() -> CompetencyExtractor:
 
 def get_scenario_repository() -> ScenarioRepository:
     return ScenarioRepository()
+
+
+def get_skill_relation_repository() -> SkillRelationRepository:
+    return SkillRelationRepository()
 
 
 def _raise_demand_error(error: DemandError) -> None:
@@ -227,6 +267,13 @@ def _raise_scenario_error(error: ScenarioError) -> None:
     ) from error
 
 
+def _raise_relation_error(error: RelationError) -> None:
+    detail: dict[str, object] = {"code": error.code}
+    if error.field:
+        detail["fieldErrors"] = {error.field: error.code}
+    raise HTTPException(status_code=error.status_code, detail=detail) from error
+
+
 @app.exception_handler(RequestValidationError)
 async def handle_request_validation_error(
     request: Request,
@@ -244,6 +291,7 @@ async def handle_request_validation_error(
         "reviewed_level": "INVALID_LEVEL",
         "reviewed_evidence": "REQUIRED_EVIDENCE",
         "decision": "INVALID_REVIEW_DECISION",
+        "confidence": "INVALID_CONFIDENCE",
     }
     for issue in error.errors():
         field = str(issue["loc"][-1])
@@ -252,6 +300,23 @@ async def handle_request_validation_error(
         status_code=422,
         content={"detail": {"code": "VALIDATION_ERROR", "fieldErrors": field_errors}},
     )
+
+
+@app.post("/skill-relations", status_code=201, response_model=SkillRelationResponse)
+def create_skill_relation(
+    payload: SkillRelationPayload,
+    actor_id: Annotated[str, Depends(get_skill_relation_editor)],
+    repository: Annotated[SkillRelationRepository, Depends(get_skill_relation_repository)],
+) -> dict[str, object]:
+    try:
+        return repository.create(
+            source_skill_id=payload.source_skill_id,
+            target_skill_id=payload.target_skill_id,
+            confidence=payload.confidence,
+            actor_id=actor_id,
+        )
+    except RelationError as error:
+        _raise_relation_error(error)
 
 
 @app.post("/people/{person_id}/competencies", status_code=201, response_model=CompetencyResponse)
@@ -272,6 +337,19 @@ def create_person_competency(
         )
     except CompetencyError as error:
         _raise_competency_error(error)
+
+
+@app.get(
+    "/people/{person_id}/skill-inference/{target_skill_id}",
+    response_model=SkillInferenceResponse,
+)
+def infer_person_skill(
+    person_id: str,
+    target_skill_id: str,
+    _actor_id: Annotated[str, Depends(get_competency_editor)],
+    repository: Annotated[SkillRelationRepository, Depends(get_skill_relation_repository)],
+) -> dict[str, object]:
+    return repository.infer_for_person(person_id, target_skill_id)
 
 
 @app.get("/people/{person_id}/competencies", response_model=list[CompetencyResponse])

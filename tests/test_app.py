@@ -13,9 +13,11 @@ from voskill.main import (
     get_competency_repository,
     get_demand_repository,
     get_scenario_repository,
+    get_skill_relation_repository,
     get_suggestion_repository,
     handle_request_validation_error,
 )
+from voskill.skill_relations import RelationError
 from voskill.suggestions import SuggestionError
 
 
@@ -191,6 +193,27 @@ class MemoryScenarioRepository:
         }
 
 
+class MemorySkillRelationRepository:
+    def __init__(self) -> None:
+        self.rows: list[dict] = []
+
+    def create(self, **values: object) -> dict:
+        relation = {"relation_id": "R-001", "active": True, **values}
+        self.rows.append(relation)
+        return relation
+
+
+class MemorySkillInferenceRepository:
+    def __init__(self, result: dict) -> None:
+        self.result = result
+        self.confirmed_competencies = {"SKILL-1": 4}
+        self.calls: list[tuple[str, str]] = []
+
+    def infer_for_person(self, person_id: str, target_skill_id: str) -> dict:
+        self.calls.append((person_id, target_skill_id))
+        return {**self.result, "person_id": person_id, "target_skill_id": target_skill_id}
+
+
 class MemorySuggestionRepository:
     def __init__(self) -> None:
         self.suggestions: list[dict] = []
@@ -291,6 +314,190 @@ def test_demand_write_requires_authenticated_actor_context() -> None:
 
     assert response.status_code == 401
     assert response.json()["detail"]["code"] == "AUTHENTICATION_REQUIRED"
+
+
+def test_skill_relation_create_requires_explicit_management_authorization() -> None:
+    repository = MemorySkillRelationRepository()
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_skill_relation_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "POST",
+            "/skill-relations",
+            {
+                "source_skill_id": "SKILL-1",
+                "target_skill_id": "SKILL-2",
+                "confidence": 0.65,
+            },
+            state={"can_manage_skill_relations": False},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "FORBIDDEN"
+    assert repository.rows == []
+
+
+def test_authorized_user_can_create_skill_relation() -> None:
+    repository = MemorySkillRelationRepository()
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_skill_relation_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "POST",
+            "/skill-relations",
+            {
+                "source_skill_id": "SKILL-1",
+                "target_skill_id": "SKILL-2",
+                "confidence": 0.65,
+            },
+            state={"can_manage_skill_relations": True},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    assert response.json()["source_skill_id"] == "SKILL-1"
+    assert response.json()["target_skill_id"] == "SKILL-2"
+    assert response.json()["confidence"] == 0.65
+    assert response.json()["actor_id"] == "U-001"
+    assert repository.rows[0]["actor_id"] == "U-001"
+
+
+def test_skill_relation_api_rejects_invalid_confidence() -> None:
+    repository = MemorySkillRelationRepository()
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_skill_relation_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "POST",
+            "/skill-relations",
+            {
+                "source_skill_id": "SKILL-1",
+                "target_skill_id": "SKILL-2",
+                "confidence": 1.2,
+            },
+            state={"can_manage_skill_relations": True},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["fieldErrors"] == {
+        "confidence": "INVALID_CONFIDENCE"
+    }
+    assert repository.rows == []
+
+
+def test_skill_relation_api_maps_unknown_skill_error() -> None:
+    class UnknownSkillRepository:
+        def create(self, **values: object) -> dict:
+            raise RelationError("UNKNOWN_SKILL", 422, "target_skill_id")
+
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_skill_relation_repository] = lambda: UnknownSkillRepository()
+
+    try:
+        response = _request(
+            "POST",
+            "/skill-relations",
+            {
+                "source_skill_id": "SKILL-1",
+                "target_skill_id": "SKILL-404",
+                "confidence": 0.65,
+            },
+            state={"can_manage_skill_relations": True},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "UNKNOWN_SKILL"
+    assert response.json()["detail"]["fieldErrors"] == {
+        "target_skill_id": "UNKNOWN_SKILL"
+    }
+
+
+def test_skill_inference_returns_traceable_result_without_changing_profile() -> None:
+    repository = MemorySkillInferenceRepository(
+        {
+            "status": "inferred",
+            "inferred_level": 4,
+            "source_skill_id": "SKILL-1",
+            "relation_id": "REL-001",
+            "confidence": 0.65,
+            "reason": None,
+        }
+    )
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_skill_relation_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "GET",
+            "/people/P-001/skill-inference/SKILL-2",
+            state={"authorized_person_ids": ["P-001"]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "inferred"
+    assert response.json()["inferred_level"] == 4
+    assert response.json()["relationId"] == "REL-001"
+    assert response.json()["confidence"] == 0.65
+    assert repository.calls == [("P-001", "SKILL-2")]
+    assert repository.confirmed_competencies == {"SKILL-1": 4}
+
+
+def test_skill_inference_without_evidence_returns_no_level() -> None:
+    repository = MemorySkillInferenceRepository(
+        {
+            "status": "insufficient_evidence",
+            "inferred_level": None,
+            "source_skill_id": None,
+            "relation_id": None,
+            "confidence": None,
+            "reason": "insufficient_evidence",
+        }
+    )
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_skill_relation_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "GET",
+            "/people/P-001/skill-inference/SKILL-2",
+            state={"authorized_person_ids": ["P-001"]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["inferred_level"] is None
+    assert response.json()["reason"] == "insufficient_evidence"
+
+
+def test_skill_inference_requires_person_authorization() -> None:
+    repository = MemorySkillInferenceRepository({"status": "inferred"})
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_skill_relation_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "GET",
+            "/people/P-001/skill-inference/SKILL-2",
+            state={"authorized_person_ids": []},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    assert repository.calls == []
 
 
 def test_manual_competency_create_and_read_returns_exact_values() -> None:

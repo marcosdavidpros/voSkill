@@ -1,10 +1,11 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated
+from hashlib import sha256
+from typing import Annotated, Literal, Protocol
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from starlette.responses import JSONResponse
 
 from .database import (
@@ -15,6 +16,8 @@ from .database import (
     ScenarioError,
     ScenarioRepository,
 )
+from .suggestion_review import SuggestionReviewRepository
+from .suggestions import SuggestionError
 
 app = FastAPI(title="voSkill API")
 
@@ -44,6 +47,38 @@ class CompetencyPayload(BaseModel):
     review_date: date
 
 
+class CompetencyCorrectionPayload(BaseModel):
+    proficiency_level: int = Field(ge=1, le=5)
+    evidence: str = Field(min_length=1)
+    review_date: date
+
+
+class ExtractionPayload(BaseModel):
+    source_text: str = Field(max_length=20000)
+
+
+class ExtractedCompetency(BaseModel):
+    skill_name: str = Field(min_length=1, max_length=150)
+    proficiency_level: int = Field(ge=1, le=5)
+    confidence: float = Field(ge=0, le=1)
+    evidence_span: str = Field(min_length=1, max_length=4000)
+
+
+class SuggestionReviewPayload(BaseModel):
+    decision: Literal["accept", "edit", "reject"]
+    reviewed_level: int | None = Field(default=None, ge=1, le=5)
+    reviewed_evidence: str | None = Field(default=None, min_length=1)
+
+
+class CompetencyExtractor(Protocol):
+    def extract(self, source_text: str) -> ExtractedCompetency: ...
+
+
+class UnavailableCompetencyExtractor:
+    def extract(self, source_text: str) -> ExtractedCompetency:
+        raise SuggestionError("PROVIDER_UNAVAILABLE", 503)
+
+
 class DemandResponse(BaseModel):
     demand_id: str
     project_id: str
@@ -65,6 +100,27 @@ class CompetencyResponse(BaseModel):
     origin_type: str
     actor_id: str
     review_date: date
+
+
+class SuggestionResponse(BaseModel):
+    suggestion_id: str
+    person_id: str
+    skill_name: str
+    proficiency_level: int
+    confidence: float
+    evidence_span: str
+    source_sha256: str
+    status: str
+    actor_id: str
+    created_at: datetime
+
+
+class SuggestionReviewResponse(SuggestionResponse):
+    reviewed_by: str
+    reviewed_at: datetime
+    reviewed_level: int | None
+    reviewed_evidence: str | None
+    competency_id: str | None = None
 
 
 class AlternativePayload(BaseModel):
@@ -93,12 +149,47 @@ def get_actor_id(request: Request) -> str:
     return actor_id
 
 
+def get_competency_editor(
+    request: Request,
+    person_id: str,
+    actor_id: Annotated[str, Depends(get_actor_id)],
+) -> str:
+    authorized_person_ids = getattr(request.state, "authorized_person_ids", ())
+    authenticated_person_id = getattr(request.state, "person_id", None)
+    if (
+        actor_id == person_id
+        or authenticated_person_id == person_id
+        or person_id in authorized_person_ids
+    ):
+        return actor_id
+    raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
+
+
+def get_competency_reviewer(
+    request: Request,
+    person_id: str,
+    actor_id: Annotated[str, Depends(get_actor_id)],
+) -> str:
+    reviewer_person_ids = getattr(request.state, "authorized_person_ids", ())
+    if person_id in reviewer_person_ids:
+        return actor_id
+    raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
+
+
 def get_demand_repository() -> DemandRepository:
     return DemandRepository()
 
 
 def get_competency_repository() -> CompetencyRepository:
     return CompetencyRepository()
+
+
+def get_suggestion_repository() -> SuggestionReviewRepository:
+    return SuggestionReviewRepository()
+
+
+def get_competency_extractor() -> CompetencyExtractor:
+    return UnavailableCompetencyExtractor()
 
 
 def get_scenario_repository() -> ScenarioRepository:
@@ -116,6 +207,13 @@ def _raise_demand_error(error: DemandError) -> None:
 
 
 def _raise_competency_error(error: CompetencyError) -> None:
+    detail: dict[str, object] = {"code": error.code}
+    if error.field:
+        detail["fieldErrors"] = {error.field: error.code}
+    raise HTTPException(status_code=error.status_code, detail=detail) from error
+
+
+def _raise_suggestion_error(error: SuggestionError) -> None:
     detail: dict[str, object] = {"code": error.code}
     if error.field:
         detail["fieldErrors"] = {error.field: error.code}
@@ -142,6 +240,10 @@ async def handle_request_validation_error(
         "skill_id": "INVALID_SKILL",
         "load_unit": "INVALID_LOAD_UNIT",
         "evidence": "REQUIRED_EVIDENCE",
+        "source_text": "EMPTY_SOURCE",
+        "reviewed_level": "INVALID_LEVEL",
+        "reviewed_evidence": "REQUIRED_EVIDENCE",
+        "decision": "INVALID_REVIEW_DECISION",
     }
     for issue in error.errors():
         field = str(issue["loc"][-1])
@@ -156,7 +258,7 @@ async def handle_request_validation_error(
 def create_person_competency(
     person_id: str,
     payload: CompetencyPayload,
-    actor_id: Annotated[str, Depends(get_actor_id)],
+    actor_id: Annotated[str, Depends(get_competency_editor)],
     repository: Annotated[CompetencyRepository, Depends(get_competency_repository)],
 ) -> dict[str, object]:
     try:
@@ -182,6 +284,99 @@ def list_person_competencies(
         return repository.list_for_person(person_id)
     except CompetencyError as error:
         _raise_competency_error(error)
+
+
+@app.patch(
+    "/people/{person_id}/competencies/{competency_id}",
+    response_model=CompetencyResponse,
+)
+def correct_person_competency(
+    person_id: str,
+    competency_id: str,
+    payload: CompetencyCorrectionPayload,
+    actor_id: Annotated[str, Depends(get_competency_editor)],
+    repository: Annotated[CompetencyRepository, Depends(get_competency_repository)],
+) -> dict[str, object]:
+    try:
+        return repository.correct(
+            person_id=person_id,
+            competency_id=competency_id,
+            proficiency_level=payload.proficiency_level,
+            evidence=payload.evidence,
+            review_date=payload.review_date,
+            actor_id=actor_id,
+        )
+    except CompetencyError as error:
+        _raise_competency_error(error)
+
+
+@app.post(
+    "/people/{person_id}/competency-suggestions/extract",
+    status_code=201,
+    response_model=SuggestionResponse,
+)
+def extract_person_competency_suggestion(
+    person_id: str,
+    payload: ExtractionPayload,
+    actor_id: Annotated[str, Depends(get_competency_editor)],
+    extractor: Annotated[CompetencyExtractor, Depends(get_competency_extractor)],
+    repository: Annotated[SuggestionReviewRepository, Depends(get_suggestion_repository)],
+) -> dict[str, object]:
+    if not payload.source_text.strip():
+        raise HTTPException(status_code=422, detail={"code": "EMPTY_SOURCE"})
+
+    try:
+        extracted = ExtractedCompetency.model_validate(extractor.extract(payload.source_text))
+    except SuggestionError as error:
+        _raise_suggestion_error(error)
+    except ValidationError:
+        _raise_suggestion_error(SuggestionError("INVALID_EXTRACTOR_OUTPUT", 502))
+
+    if extracted.evidence_span not in payload.source_text:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "EVIDENCE_NOT_IN_SOURCE",
+                "fieldErrors": {"evidence_span": "EVIDENCE_NOT_IN_SOURCE"},
+            },
+        )
+
+    try:
+        return repository.create_suggestion(
+            person_id=person_id,
+            skill_name=extracted.skill_name,
+            proficiency_level=extracted.proficiency_level,
+            confidence=extracted.confidence,
+            evidence_span=extracted.evidence_span,
+            source_sha256=sha256(payload.source_text.encode("utf-8")).hexdigest(),
+            actor_id=actor_id,
+        )
+    except SuggestionError as error:
+        _raise_suggestion_error(error)
+
+
+@app.post(
+    "/people/{person_id}/competency-suggestions/{suggestion_id}/review",
+    response_model=SuggestionReviewResponse,
+)
+def review_person_competency_suggestion(
+    person_id: str,
+    suggestion_id: str,
+    payload: SuggestionReviewPayload,
+    reviewer_id: Annotated[str, Depends(get_competency_reviewer)],
+    repository: Annotated[SuggestionReviewRepository, Depends(get_suggestion_repository)],
+) -> dict[str, object]:
+    try:
+        return repository.review_suggestion(
+            person_id=person_id,
+            suggestion_id=suggestion_id,
+            decision=payload.decision,
+            reviewer_id=reviewer_id,
+            reviewed_level=payload.reviewed_level,
+            reviewed_evidence=payload.reviewed_evidence,
+        )
+    except SuggestionError as error:
+        _raise_suggestion_error(error)
 
 
 @app.post("/projects/{project_id}/demands", status_code=201, response_model=DemandResponse)

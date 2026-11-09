@@ -76,3 +76,43 @@ def test_scenario_migration_preserves_immutable_snapshots() -> None:
     assert all(name.startswith("VSK_") for name in (*created_names, *constraint_names))
     assert all(len(name) <= 30 for name in (*created_names, *constraint_names))
     assert not re.search(r"\bDROP\s+(TABLE|TRIGGER|SEQUENCE)\b", ddl)
+
+
+def test_suggestion_migration_stores_evidence_not_full_source() -> None:
+    migration_file = ROOT / "database" / "oracle" / "003_competency_suggestions.sql"
+
+    assert migration_file.is_file()
+    ddl = migration_file.read_text(encoding="utf-8").upper()
+
+    assert re.search(r"CREATE\s+TABLE\s+VSK_SKILL_SUGGESTIONS\b", ddl)
+    assert "SUGGESTED_SKILL_NAME" in ddl
+    assert "SUGGESTED_LEVEL" in ddl
+    assert "CONFIDENCE" in ddl
+    assert "EVIDENCE_SPAN" in ddl
+    assert "SOURCE_SHA256" in ddl
+    assert "PENDING_REVIEW" in ddl
+    assert "SOURCE_TEXT" not in ddl
+    assert "SESSION_USER" in ddl
+    assert "ITB2CTRF" in ddl
+    assert not re.search(r"\bDROP\s+(TABLE|TRIGGER|SEQUENCE)\b", ddl)
+
+
+def test_suggestion_review_migration_keeps_reviewed_values_and_competency_link() -> None:
+    migration_file = ROOT / "database" / "oracle" / "004_suggestion_review.sql"
+
+    assert migration_file.is_file()
+    ddl = migration_file.read_text(encoding="utf-8").upper()
+
+    assert re.search(r"ALTER\s+TABLE\s+VSK_SKILL_SUGGESTIONS\s+ADD", ddl)
+    assert "REVIEWED_LEVEL" in ddl
+    assert "REVIEWED_EVIDENCE" in ddl
+    assert "COMPETENCY_ID" in ddl
+    assert "VSK_FK_SUG_COMPETENCY" in ddl
+    assert "VSK_CK_SUG_REVIEW_STATE" in ddl
+    assert re.search(r"IF\s+UPPER\(L_SESSION_USER\)\s*<>\s*'ITB2CTRF'\s+THEN", ddl)
+    assert re.search(
+        r"L_EXISTING_COLUMNS\s*>\s*0\s+OR\s+L_EXISTING_CONSTRAINTS\s*>\s*0",
+        ddl,
+    )
+    assert "-20010" in ddl
+    assert "-20012" in ddl

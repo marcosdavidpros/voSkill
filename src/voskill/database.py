@@ -146,6 +146,100 @@ class CompetencyRepository:
         finally:
             connection.close()
 
+    def correct(
+        self,
+        person_id: str,
+        competency_id: str,
+        proficiency_level: int,
+        evidence: str,
+        review_date: date,
+        actor_id: str,
+    ) -> dict[str, object]:
+        if not 1 <= proficiency_level <= 5:
+            raise CompetencyError("INVALID_LEVEL", 422, "proficiency_level")
+        if not evidence.strip():
+            raise CompetencyError("REQUIRED_EVIDENCE", 422, "evidence")
+
+        connection = self._connection_factory()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT COMPETENCY_ID, SKILL_ID, PROFICIENCY_LEVEL, EVIDENCE, ORIGIN_TYPE
+                      FROM VSK_PERSON_COMPETENCIES
+                     WHERE COMPETENCY_ID = :competency_id AND PERSON_ID = :person_id
+                     FOR UPDATE
+                    """,
+                    competency_id=competency_id,
+                    person_id=person_id,
+                )
+                current = cursor.fetchone()
+                if current is None:
+                    raise CompetencyError("COMPETENCY_NOT_FOUND", 404)
+
+                cursor.execute(
+                    "SELECT SKILL_NAME FROM VSK_SKILLS WHERE SKILL_ID = :skill_id",
+                    skill_id=current[1],
+                )
+                skill = cursor.fetchone()
+                if skill is None:
+                    raise CompetencyError("UNKNOWN_SKILL", 422, "skill_id")
+
+                changed_at = datetime.now(UTC)
+                cursor.execute(
+                    """
+                    INSERT INTO VSK_PERSON_COMPETENCY_HISTORY (
+                        HISTORY_ID, COMPETENCY_ID, PREVIOUS_LEVEL, NEW_LEVEL,
+                        PREVIOUS_EVIDENCE, NEW_EVIDENCE, ACTOR_ID, CHANGED_AT
+                    ) VALUES (
+                        :history_id, :competency_id, :previous_level, :new_level,
+                        :previous_evidence, :new_evidence, :actor_id, :changed_at
+                    )
+                    """,
+                    history_id=str(uuid4()),
+                    competency_id=competency_id,
+                    previous_level=current[2],
+                    new_level=proficiency_level,
+                    previous_evidence=current[3],
+                    new_evidence=evidence.strip(),
+                    actor_id=actor_id,
+                    changed_at=changed_at,
+                )
+                reviewed_at = datetime.combine(review_date, time.min, tzinfo=UTC)
+                cursor.execute(
+                    """
+                    UPDATE VSK_PERSON_COMPETENCIES
+                       SET PROFICIENCY_LEVEL = :proficiency_level,
+                           EVIDENCE = :evidence,
+                           ACTOR_ID = :actor_id,
+                           REVIEWED_AT = :reviewed_at
+                     WHERE COMPETENCY_ID = :competency_id AND PERSON_ID = :person_id
+                    """,
+                    proficiency_level=proficiency_level,
+                    evidence=evidence.strip(),
+                    actor_id=actor_id,
+                    reviewed_at=reviewed_at,
+                    competency_id=competency_id,
+                    person_id=person_id,
+                )
+                connection.commit()
+                return {
+                    "competency_id": competency_id,
+                    "person_id": person_id,
+                    "skill_id": current[1],
+                    "skill_name": skill[0],
+                    "proficiency_level": proficiency_level,
+                    "evidence": evidence.strip(),
+                    "origin_type": current[4],
+                    "actor_id": actor_id,
+                    "review_date": review_date.isoformat(),
+                }
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
     @staticmethod
     def _record(row: tuple[object, ...]) -> dict[str, object]:
         reviewed_at = row[8]

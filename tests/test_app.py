@@ -1,4 +1,5 @@
 import asyncio
+from hashlib import sha256
 
 import httpx
 from fastapi.exceptions import RequestValidationError
@@ -8,11 +9,14 @@ from voskill.database import CompetencyError, DemandError, ScenarioError
 from voskill.main import (
     app,
     get_actor_id,
+    get_competency_extractor,
     get_competency_repository,
     get_demand_repository,
     get_scenario_repository,
+    get_suggestion_repository,
     handle_request_validation_error,
 )
+from voskill.suggestions import SuggestionError
 
 
 def test_health_endpoint_does_not_require_oracle() -> None:
@@ -27,9 +31,25 @@ def test_health_endpoint_does_not_require_oracle() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def _request(method: str, path: str, payload: dict | None = None) -> httpx.Response:
+class StateInjector:
+    def __init__(self, application, state: dict[str, object]) -> None:
+        self.application = application
+        self.state = state
+
+    async def __call__(self, scope, receive, send) -> None:
+        scope.setdefault("state", {}).update(self.state)
+        await self.application(scope, receive, send)
+
+
+def _request(
+    method: str,
+    path: str,
+    payload: dict | None = None,
+    state: dict[str, object] | None = None,
+) -> httpx.Response:
     async def send() -> httpx.Response:
-        transport = httpx.ASGITransport(app=app)
+        application = StateInjector(app, state) if state is not None else app
+        transport = httpx.ASGITransport(app=application)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             return await client.request(method, path, json=payload)
 
@@ -66,6 +86,7 @@ class MemoryDemandRepository:
 class MemoryCompetencyRepository:
     def __init__(self) -> None:
         self.rows: list[dict] = []
+        self.history: list[dict] = []
 
     def create(self, **values: object) -> dict:
         if not 1 <= values["proficiency_level"] <= 5:
@@ -83,6 +104,43 @@ class MemoryCompetencyRepository:
 
     def list_for_person(self, person_id: str) -> list[dict]:
         return [row for row in self.rows if row["person_id"] == person_id]
+
+    def correct(self, **values: object) -> dict:
+        row = next(
+            row
+            for row in self.rows
+            if row["competency_id"] == values["competency_id"]
+            and row["person_id"] == values["person_id"]
+        )
+        self.history.append(
+            {
+                "previous_level": row["proficiency_level"],
+                "new_level": values["proficiency_level"],
+                "actor_id": values["actor_id"],
+                "changed_at": "2026-11-08T00:00:00+00:00",
+            }
+        )
+        row.update(
+            proficiency_level=values["proficiency_level"],
+            evidence=values["evidence"],
+            actor_id=values["actor_id"],
+            review_date=values["review_date"].isoformat(),
+        )
+        return row
+
+
+def _existing_competency() -> dict:
+    return {
+        "competency_id": "C-001",
+        "person_id": "P-001",
+        "skill_id": "SKILL-1",
+        "skill_name": "Kubernetes",
+        "proficiency_level": 4,
+        "evidence": "Migração do cluster",
+        "origin_type": "MANUAL",
+        "actor_id": "U-001",
+        "review_date": "2026-11-08",
+    }
 
 
 class MemoryScenarioRepository:
@@ -117,9 +175,11 @@ class MemoryScenarioRepository:
             "scenario_ids": [first_scenario_id, second_scenario_id],
             "scenarios": [
                 {"scenario_id": first_scenario_id, "status": "complete", "missing": []},
-                {"scenario_id": second_scenario_id, "status": "incomplete", "missing": [
-                    {"period": "2026-02", "field": "availability"}
-                ]},
+                {
+                    "scenario_id": second_scenario_id,
+                    "status": "incomplete",
+                    "missing": [{"period": "2026-02", "field": "availability"}],
+                },
             ],
             "periods": [
                 {
@@ -128,6 +188,91 @@ class MemoryScenarioRepository:
                     "changed_values": {},
                 }
             ],
+        }
+
+
+class MemorySuggestionRepository:
+    def __init__(self) -> None:
+        self.suggestions: list[dict] = []
+        self.confirmed_competencies: list[dict] = []
+
+    def create_suggestion(self, **values: object) -> dict:
+        suggestion = {
+            "suggestion_id": "SG-001",
+            "status": "PENDING_REVIEW",
+            "created_at": "2026-11-08T12:00:00+00:00",
+            **values,
+        }
+        self.suggestions.append(suggestion)
+        return suggestion
+
+    def review_suggestion(
+        self,
+        person_id: str,
+        suggestion_id: str,
+        decision: str,
+        reviewer_id: str,
+        reviewed_level: int | None = None,
+        reviewed_evidence: str | None = None,
+    ) -> dict:
+        suggestion = next(
+            row
+            for row in self.suggestions
+            if row["suggestion_id"] == suggestion_id and row["person_id"] == person_id
+        )
+        if suggestion["status"] != "PENDING_REVIEW":
+            raise SuggestionError("SUGGESTION_ALREADY_REVIEWED", 409)
+        reviewed_at = "2026-11-08T12:30:00+00:00"
+        suggestion.update(
+            status={"accept": "ACCEPTED", "edit": "EDITED", "reject": "REJECTED"}[decision],
+            reviewed_by=reviewer_id,
+            reviewed_at=reviewed_at,
+            reviewed_level=(
+                reviewed_level
+                if decision == "edit"
+                else suggestion["proficiency_level"] if decision == "accept" else None
+            ),
+            reviewed_evidence=(
+                reviewed_evidence
+                if decision == "edit"
+                else suggestion["evidence_span"] if decision == "accept" else None
+            ),
+        )
+        if decision in {"accept", "edit"}:
+            self.confirmed_competencies.append(
+                {
+                    "person_id": person_id,
+                    "skill_name": suggestion["skill_name"],
+                    "proficiency_level": suggestion["reviewed_level"],
+                    "evidence": suggestion["reviewed_evidence"],
+                    "actor_id": reviewer_id,
+                }
+            )
+        return suggestion
+
+
+class FixedCompetencyExtractor:
+    def extract(self, source_text: str) -> dict:
+        return {
+            "skill_name": "Kubernetes",
+            "proficiency_level": 4,
+            "confidence": 0.92,
+            "evidence_span": "Migração do cluster Kubernetes",
+        }
+
+
+class FailedCompetencyExtractor:
+    def extract(self, source_text: str) -> dict:
+        raise SuggestionError("PROVIDER_UNAVAILABLE", 503)
+
+
+class UnsupportedEvidenceExtractor:
+    def extract(self, source_text: str) -> dict:
+        return {
+            "skill_name": "Kubernetes",
+            "proficiency_level": 4,
+            "confidence": 0.92,
+            "evidence_span": "Texto que não existe na fonte",
         }
 
 
@@ -163,6 +308,7 @@ def test_manual_competency_create_and_read_returns_exact_values() -> None:
                 "evidence": "Migração do cluster",
                 "review_date": "2026-11-08",
             },
+            state={"authorized_person_ids": ["P-001"]},
         )
         read_back = _request("GET", "/people/P-001/competencies")
     finally:
@@ -214,6 +360,7 @@ def test_competency_repository_error_preserves_field_error() -> None:
                 "evidence": "Evidence",
                 "review_date": "2026-11-08",
             },
+            state={"authorized_person_ids": ["P-001"]},
         )
     finally:
         app.dependency_overrides.clear()
@@ -243,6 +390,423 @@ def test_competency_read_maps_unknown_person_to_404() -> None:
     assert response.json()["detail"]["fieldErrors"] == {"person_id": "PERSON_NOT_FOUND"}
 
 
+def test_authorized_competency_correction_updates_value_and_history() -> None:
+    repository = MemoryCompetencyRepository()
+    repository.rows.append(_existing_competency())
+    app.dependency_overrides[get_competency_repository] = lambda: repository
+
+    response = _request(
+        "PATCH",
+        "/people/P-001/competencies/C-001",
+        {
+            "proficiency_level": 3,
+            "evidence": "Operação do cluster",
+            "review_date": "2026-11-08",
+        },
+        state={"actor_id": "U-001", "authorized_person_ids": ["P-001"]},
+    )
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["proficiency_level"] == 3
+    assert response.json()["actor_id"] == "U-001"
+    assert repository.history == [
+        {
+            "previous_level": 4,
+            "new_level": 3,
+            "actor_id": "U-001",
+            "changed_at": "2026-11-08T00:00:00+00:00",
+        }
+    ]
+
+
+def test_person_can_correct_own_competency() -> None:
+    repository = MemoryCompetencyRepository()
+    repository.rows.append(_existing_competency())
+    app.dependency_overrides[get_competency_repository] = lambda: repository
+
+    response = _request(
+        "PATCH",
+        "/people/P-001/competencies/C-001",
+        {
+            "proficiency_level": 3,
+            "evidence": "Atualização pela própria pessoa",
+            "review_date": "2026-11-08",
+        },
+        state={"actor_id": "P-001"},
+    )
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["actor_id"] == "P-001"
+    assert response.json()["proficiency_level"] == 3
+    assert repository.history[0]["actor_id"] == "P-001"
+
+
+def test_extraction_stores_pending_suggestion_without_changing_confirmed_profile() -> None:
+    repository = MemorySuggestionRepository()
+    confirmed_before = [row.copy() for row in repository.confirmed_competencies]
+    source_text = "Experiência: Migração do cluster Kubernetes."
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_suggestion_repository] = lambda: repository
+    app.dependency_overrides[get_competency_extractor] = lambda: FixedCompetencyExtractor()
+
+    try:
+        response = _request(
+            "POST",
+            "/people/P-001/competency-suggestions/extract",
+            {"source_text": source_text},
+            state={"authorized_person_ids": ["P-001"]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    assert response.json()["skill_name"] == "Kubernetes"
+    assert response.json()["proficiency_level"] == 4
+    assert response.json()["confidence"] == 0.92
+    assert response.json()["evidence_span"] == "Migração do cluster Kubernetes"
+    assert response.json()["status"] == "PENDING_REVIEW"
+    assert response.json()["actor_id"] == "U-001"
+    assert response.json()["source_sha256"] == sha256(source_text.encode("utf-8")).hexdigest()
+    assert "source_text" not in repository.suggestions[0]
+    assert len(repository.suggestions) == 1
+    assert repository.confirmed_competencies == confirmed_before
+
+
+def test_empty_source_returns_error_without_persisting_suggestion() -> None:
+    repository = MemorySuggestionRepository()
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_suggestion_repository] = lambda: repository
+    app.dependency_overrides[get_competency_extractor] = lambda: FixedCompetencyExtractor()
+
+    try:
+        response = _request(
+            "POST",
+            "/people/P-001/competency-suggestions/extract",
+            {"source_text": "   "},
+            state={"authorized_person_ids": ["P-001"]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "EMPTY_SOURCE"
+    assert repository.suggestions == []
+    assert repository.confirmed_competencies == []
+
+
+def test_extractor_failure_returns_provider_unavailable_without_persisting() -> None:
+    repository = MemorySuggestionRepository()
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_suggestion_repository] = lambda: repository
+    app.dependency_overrides[get_competency_extractor] = lambda: FailedCompetencyExtractor()
+
+    try:
+        response = _request(
+            "POST",
+            "/people/P-001/competency-suggestions/extract",
+            {"source_text": "Migração do cluster Kubernetes"},
+            state={"authorized_person_ids": ["P-001"]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "PROVIDER_UNAVAILABLE"
+    assert repository.suggestions == []
+    assert repository.confirmed_competencies == []
+
+
+def test_extractor_evidence_must_be_an_exact_source_span() -> None:
+    repository = MemorySuggestionRepository()
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_suggestion_repository] = lambda: repository
+    app.dependency_overrides[get_competency_extractor] = lambda: UnsupportedEvidenceExtractor()
+
+    try:
+        response = _request(
+            "POST",
+            "/people/P-001/competency-suggestions/extract",
+            {"source_text": "Migração do cluster Kubernetes"},
+            state={"authorized_person_ids": ["P-001"]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "EVIDENCE_NOT_IN_SOURCE"
+    assert repository.suggestions == []
+    assert repository.confirmed_competencies == []
+
+
+def _pending_suggestion(repository: MemorySuggestionRepository) -> dict:
+    return repository.create_suggestion(
+        person_id="P-001",
+        skill_name="Kubernetes",
+        proficiency_level=4,
+        confidence=0.92,
+        evidence_span="Migração do cluster Kubernetes",
+        source_sha256="a" * 64,
+        actor_id="U-001",
+    )
+
+
+def test_authorized_reviewer_accepts_suggestion_into_confirmed_profile() -> None:
+    repository = MemorySuggestionRepository()
+    _pending_suggestion(repository)
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_suggestion_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "POST",
+            "/people/P-001/competency-suggestions/SG-001/review",
+            {"decision": "accept"},
+            state={"authorized_person_ids": ["P-001"]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ACCEPTED"
+    assert response.json()["reviewed_by"] == "U-001"
+    assert response.json()["reviewed_level"] == 4
+    assert repository.confirmed_competencies[0]["actor_id"] == "U-001"
+
+
+def test_authorized_reviewer_edits_values_before_confirmation() -> None:
+    repository = MemorySuggestionRepository()
+    _pending_suggestion(repository)
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_suggestion_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "POST",
+            "/people/P-001/competency-suggestions/SG-001/review",
+            {
+                "decision": "edit",
+                "reviewed_level": 3,
+                "reviewed_evidence": "Operação de cluster Kubernetes",
+            },
+            state={"authorized_person_ids": ["P-001"]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "EDITED"
+    assert response.json()["reviewed_level"] == 3
+    assert response.json()["reviewed_evidence"] == "Operação de cluster Kubernetes"
+    assert repository.confirmed_competencies[0]["proficiency_level"] == 3
+
+
+def test_authorized_reviewer_rejects_without_changing_confirmed_profile() -> None:
+    repository = MemorySuggestionRepository()
+    _pending_suggestion(repository)
+    original_profile = [row.copy() for row in repository.confirmed_competencies]
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_suggestion_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "POST",
+            "/people/P-001/competency-suggestions/SG-001/review",
+            {"decision": "reject"},
+            state={"authorized_person_ids": ["P-001"]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "REJECTED"
+    assert response.json()["reviewed_by"] == "U-001"
+    assert repository.confirmed_competencies == original_profile
+
+
+def test_unauthorized_reviewer_cannot_change_suggestion_or_profile() -> None:
+    repository = MemorySuggestionRepository()
+    original_suggestion = _pending_suggestion(repository).copy()
+    original_profile = [row.copy() for row in repository.confirmed_competencies]
+    app.dependency_overrides[get_actor_id] = lambda: "U-999"
+    app.dependency_overrides[get_suggestion_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "POST",
+            "/people/P-001/competency-suggestions/SG-001/review",
+            {"decision": "accept"},
+            state={"authorized_person_ids": []},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    assert repository.suggestions[0] == original_suggestion
+    assert repository.confirmed_competencies == original_profile
+
+
+def test_authorized_review_accepts_suggestion_into_confirmed_profile() -> None:
+    repository = MemorySuggestionRepository()
+    repository.create_suggestion(
+        person_id="P-001",
+        skill_name="Kubernetes",
+        proficiency_level=4,
+        confidence=0.92,
+        evidence_span="Migração do cluster Kubernetes",
+        source_sha256="a" * 64,
+        actor_id="U-001",
+    )
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_suggestion_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "POST",
+            "/people/P-001/competency-suggestions/SG-001/review",
+            {"decision": "accept"},
+            state={"authorized_person_ids": ["P-001"]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ACCEPTED"
+    assert response.json()["reviewed_by"] == "U-001"
+    assert response.json()["reviewed_level"] == 4
+    assert repository.confirmed_competencies == [
+        {
+            "person_id": "P-001",
+            "skill_name": "Kubernetes",
+            "proficiency_level": 4,
+            "evidence": "Migração do cluster Kubernetes",
+            "actor_id": "U-001",
+        }
+    ]
+
+
+def test_authorized_review_can_edit_values_before_accepting() -> None:
+    repository = MemorySuggestionRepository()
+    repository.create_suggestion(
+        person_id="P-001",
+        skill_name="Kubernetes",
+        proficiency_level=4,
+        confidence=0.92,
+        evidence_span="Migração do cluster Kubernetes",
+        source_sha256="a" * 64,
+        actor_id="U-001",
+    )
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_suggestion_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "POST",
+            "/people/P-001/competency-suggestions/SG-001/review",
+            {
+                "decision": "edit",
+                "reviewed_level": 3,
+                "reviewed_evidence": "Operação do cluster",
+            },
+            state={"authorized_person_ids": ["P-001"]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "EDITED"
+    assert response.json()["reviewed_level"] == 3
+    assert response.json()["reviewed_evidence"] == "Operação do cluster"
+    assert repository.confirmed_competencies[0]["proficiency_level"] == 3
+
+
+def test_authorized_rejection_does_not_change_confirmed_profile() -> None:
+    repository = MemorySuggestionRepository()
+    repository.create_suggestion(
+        person_id="P-001",
+        skill_name="Kubernetes",
+        proficiency_level=4,
+        confidence=0.92,
+        evidence_span="Migração do cluster Kubernetes",
+        source_sha256="a" * 64,
+        actor_id="U-001",
+    )
+    original_profile = [row.copy() for row in repository.confirmed_competencies]
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_suggestion_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "POST",
+            "/people/P-001/competency-suggestions/SG-001/review",
+            {"decision": "reject"},
+            state={"authorized_person_ids": ["P-001"]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "REJECTED"
+    assert response.json()["reviewed_by"] == "U-001"
+    assert repository.confirmed_competencies == original_profile
+
+
+def test_unauthorized_review_returns_403_without_changing_suggestion_or_profile() -> None:
+    repository = MemorySuggestionRepository()
+    original_suggestion = repository.create_suggestion(
+        person_id="P-001",
+        skill_name="Kubernetes",
+        proficiency_level=4,
+        confidence=0.92,
+        evidence_span="Migração do cluster Kubernetes",
+        source_sha256="a" * 64,
+        actor_id="U-001",
+    ).copy()
+    app.dependency_overrides[get_actor_id] = lambda: "U-999"
+    app.dependency_overrides[get_suggestion_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "POST",
+            "/people/P-001/competency-suggestions/SG-001/review",
+            {"decision": "accept"},
+            state={"authorized_person_ids": []},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    assert repository.suggestions[0] == original_suggestion
+    assert repository.confirmed_competencies == []
+
+
+def test_unauthorized_competency_correction_returns_403_without_changes() -> None:
+    repository = MemoryCompetencyRepository()
+    repository.rows.append(_existing_competency())
+    original_rows = [row.copy() for row in repository.rows]
+    app.dependency_overrides[get_competency_repository] = lambda: repository
+
+    response = _request(
+        "PATCH",
+        "/people/P-001/competencies/C-001",
+        {
+            "proficiency_level": 3,
+            "evidence": "Unauthorized change",
+            "review_date": "2026-11-08",
+        },
+        state={"actor_id": "U-999", "authorized_person_ids": []},
+    )
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    assert repository.rows == original_rows
+    assert repository.history == []
+
+
 def test_invalid_manual_competency_fields_are_rejected_without_partial_insert() -> None:
     repository = MemoryCompetencyRepository()
     app.dependency_overrides[get_actor_id] = lambda: "U-001"
@@ -258,6 +822,7 @@ def test_invalid_manual_competency_fields_are_rejected_without_partial_insert() 
                 "evidence": "Evidence",
                 "review_date": "2026-11-08",
             },
+            state={"authorized_person_ids": ["P-001"]},
         )
         missing_evidence = _request(
             "POST",
@@ -268,6 +833,7 @@ def test_invalid_manual_competency_fields_are_rejected_without_partial_insert() 
                 "evidence": "   ",
                 "review_date": "2026-11-08",
             },
+            state={"authorized_person_ids": ["P-001"]},
         )
     finally:
         app.dependency_overrides.clear()

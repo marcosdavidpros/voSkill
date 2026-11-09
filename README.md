@@ -30,9 +30,15 @@ Com SQL*Plus instalado, conecte-se ao serviço e execute as migrations em ordem:
 ```powershell
 sqlplus ITB2CTRF@//host:1521/service_name @database/oracle/001_initial_schema.sql
 sqlplus ITB2CTRF@//host:1521/service_name @database/oracle/002_scenarios.sql
+sqlplus ITB2CTRF@//host:1521/service_name @database/oracle/003_competency_suggestions.sql
+sqlplus ITB2CTRF@//host:1521/service_name @database/oracle/004_suggestion_review.sql
 ```
 
 `002_scenarios.sql` cria snapshots JSON imutáveis e cenários que compartilham o snapshot-base; overrides ficam separados em `DELTAS_JSON`. A migration aborta se os objetos já existirem, portanto não a reexecute após uma aplicação bem-sucedida.
+
+`003_competency_suggestions.sql` cria a fila de revisão humana. A aplicação persiste somente o trecho exato de evidência e o SHA-256 da fonte, não o texto-fonte integral; sem extractor configurado, o endpoint retorna `PROVIDER_UNAVAILABLE`.
+
+`004_suggestion_review.sql` adiciona os valores revisados e a referência opcional à competência confirmada. O endpoint `POST /people/{person_id}/competency-suggestions/{suggestion_id}/review` aceita `accept`, `edit` ou `reject`; somente requests autorizados pelo middleware atualizam o perfil, e a decisão e o histórico são gravados numa única transação.
 
 Snapshots e deltas usam o formato `{"periods":{"YYYY-MM":{"demand":{},"availability":{}}}}`. Cada cenário alternativo aplica recursivamente seus deltas sobre o snapshot compartilhado. A comparação `GET /scenarios/{id}/compare/{other_id}` retorna premissas e diferenças por período; quando um período com demanda não tem disponibilidade, o cenário é `incomplete` e nenhuma métrica é calculada.
 

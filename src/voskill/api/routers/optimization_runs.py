@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
+from ...alternative_explanation import AlternativeExplainer, explain_alternative
 from ...optimization_runs import (
     OptimizationRunError,
     OptimizationRunRepository,
@@ -9,11 +10,16 @@ from ...optimization_runs import (
 )
 from ..dependencies import (
     get_actor_id,
+    get_alternative_explainer,
     get_optimization_run_access,
     get_optimization_run_repository,
 )
 from ..errors import raise_optimization_run_error
-from ..schemas import OptimizationRunPayload, OptimizationRunResponse
+from ..schemas import (
+    AlternativeExplanationResponse,
+    OptimizationRunPayload,
+    OptimizationRunResponse,
+)
 
 router = APIRouter()
 
@@ -55,5 +61,26 @@ def get_optimization_run(
         if record["actor_id"] != actor_id and not can_audit:
             raise OptimizationRunError("RUN_NOT_FOUND", 404)
         return record
+    except OptimizationRunError as error:
+        raise_optimization_run_error(error)
+
+
+@router.get(
+    "/optimization-runs/{run_id}/alternatives/{alternative_id}/explanation",
+    response_model=AlternativeExplanationResponse,
+)
+def get_alternative_explanation(
+    run_id: str,
+    alternative_id: str,
+    access: Annotated[tuple[str, bool], Depends(get_optimization_run_access)],
+    repository: Annotated[OptimizationRunRepository, Depends(get_optimization_run_repository)],
+    explainer: Annotated[AlternativeExplainer, Depends(get_alternative_explainer)],
+) -> dict[str, object]:
+    try:
+        record = repository.get_run(run_id)
+        actor_id, can_audit = access
+        if record["actor_id"] != actor_id and not can_audit:
+            raise OptimizationRunError("RUN_NOT_FOUND", 404)
+        return explain_alternative(record, alternative_id, explainer)
     except OptimizationRunError as error:
         raise_optimization_run_error(error)

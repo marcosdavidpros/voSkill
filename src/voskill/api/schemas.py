@@ -151,3 +151,101 @@ class OptimizationRunResponse(BaseModel):
     result: dict[str, object]
     actor_id: str
     created_at: datetime
+
+
+class AlternativeExplanationClaimResponse(BaseModel):
+    text: str
+    metric_references: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class AlternativeNarrativeResponse(BaseModel):
+    status: Literal["generated", "unavailable"]
+    origin: Literal["generated", "unavailable"]
+    text: str | None
+    claims: list[AlternativeExplanationClaimResponse]
+    reason: Literal["narrative_unavailable"] | None = None
+
+
+class AlternativeExplanationResponse(BaseModel):
+    run_id: str
+    alternative_id: str
+    snapshot_id: str
+    metrics: dict[str, object]
+    metrics_origin: Literal["deterministic"]
+    narrative: AlternativeNarrativeResponse
+    unsupported_claims: list[AlternativeExplanationClaimResponse] = Field(
+        default_factory=list,
+        serialization_alias="unsupportedClaims",
+    )
+    uncertainty: bool
+    reason: Literal["missing_evidence", "missing_cost_input", "narrative_unavailable"] | None = None
+    error: dict[str, str] | None = None
+
+
+class CompetencyMapHolderResponse(BaseModel):
+    person_id: str
+    status: Literal["confirmed", "inferred"]
+    skill_name: str | None = None
+    proficiency_level: int | None = None
+    evidence: str | None = None
+    origin_type: str | None = None
+    review_date: str | None = None
+    inferred_level: int | None = None
+    source_skill_id: str | None = None
+    relation_id: str | None = None
+    confidence: float | None = None
+    review_state: str | None = None
+
+
+class CompetencyMapSkillResponse(BaseModel):
+    skill_id: str
+    status: Literal["confirmed", "inferred", "uncovered"]
+    confirmed_count: int
+    holders: list[CompetencyMapHolderResponse]
+
+
+class CompetencyMapCoverageResponse(BaseModel):
+    confirmed_count: int
+    skill_count: int
+    ratio: float
+
+
+class CompetencyMapResponse(BaseModel):
+    scenario_id: str
+    project_id: str
+    coverage: CompetencyMapCoverageResponse
+    skills: list[CompetencyMapSkillResponse]
+    summary: str
+
+
+class CriticalSkillThresholdPayload(BaseModel):
+    threshold: int = Field(strict=True)
+
+
+class CriticalSkillThresholdResponse(BaseModel):
+    project_id: str
+    skill_id: str
+    threshold: int
+    actor_id: str
+    updated_at: datetime
+
+
+class RiskContributorResponse(BaseModel):
+    person_id: str
+    evidence: str
+
+
+class CriticalSkillRiskResponse(BaseModel):
+    skill_id: str
+    skill_name: str
+    confirmed_count: int
+    threshold: int
+    people: list[RiskContributorResponse]
+
+
+class RiskPanelResponse(BaseModel):
+    scenario_id: str
+    project_id: str
+    thresholds: dict[str, int]
+    risks: list[CriticalSkillRiskResponse]

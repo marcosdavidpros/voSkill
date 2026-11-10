@@ -3,9 +3,11 @@ from typing import Annotated, Protocol
 
 from fastapi import Depends, HTTPException, Request
 
+from ..alternative_explanation import AlternativeExplainer, UnavailableAlternativeExplainer
 from ..competencies import CompetencyRepository
 from ..demands import DemandRepository
 from ..optimization_runs import OptimizationRunRepository
+from ..risk_thresholds import RiskThresholdRepository
 from ..scenarios import ScenarioRepository
 from ..skill_relations import SkillRelationRepository
 from ..suggestion_review import SuggestionReviewRepository
@@ -109,9 +111,65 @@ def get_optimization_run_repository() -> OptimizationRunRepository:
     return OptimizationRunRepository()
 
 
+def get_risk_threshold_repository() -> RiskThresholdRepository:
+    return RiskThresholdRepository()
+
+
+def get_alternative_explainer() -> AlternativeExplainer:
+    return UnavailableAlternativeExplainer()
+
+
 def get_optimization_run_access(
     request: Request,
     actor_id: Annotated[str, Depends(get_actor_id)],
 ) -> tuple[str, bool]:
     can_audit = getattr(request.state, "can_audit_optimization_runs", False) is True
     return actor_id, can_audit
+
+
+def require_scenario_people_access(
+    request: Request,
+    actor_id: str,
+    scenario_id: str,
+    project_id: str,
+    person_ids: set[str],
+) -> None:
+    authorized_people = set(getattr(request.state, "authorized_person_ids", ()))
+    authenticated_person_id = getattr(request.state, "person_id", None)
+    authorized_projects = set(getattr(request.state, "authorized_project_ids", ()))
+    can_view_all = getattr(request.state, "can_view_scenario_data", False) is True
+    all_people_authorized = all(
+        person_id in authorized_people or person_id == authenticated_person_id
+        for person_id in person_ids
+    )
+    if can_view_all or project_id in authorized_projects or all_people_authorized:
+        return
+
+    logging.getLogger("voskill.audit").warning(
+        "access_denied",
+        extra={
+            "actor_id": actor_id,
+            "resource_id": scenario_id,
+            "action": "view_competency_map",
+            "outcome": "denied",
+        },
+    )
+    raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
+
+
+def require_project_risk_manager(request: Request, actor_id: str, project_id: str) -> None:
+    authorized_projects = set(getattr(request.state, "authorized_project_ids", ()))
+    can_manage_thresholds = getattr(request.state, "can_manage_risk_thresholds", False) is True
+    if project_id in authorized_projects or can_manage_thresholds:
+        return
+
+    logging.getLogger("voskill.audit").warning(
+        "access_denied",
+        extra={
+            "actor_id": actor_id,
+            "resource_id": project_id,
+            "action": "manage_critical_skill_thresholds",
+            "outcome": "denied",
+        },
+    )
+    raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})

@@ -24,7 +24,7 @@ def compare_scenarios(
         (first_scenario_id, first_snapshot, first_deltas),
         (second_scenario_id, second_snapshot, second_deltas),
     ):
-        effective = _merge_json(snapshot, deltas)
+        effective = merge_scenario_data(snapshot, deltas)
         periods = effective.get("periods") if isinstance(effective, dict) else None
         if not isinstance(periods, dict):
             raise ScenarioError("INVALID_SCENARIO_SNAPSHOT", 422)
@@ -109,3 +109,7 @@ def _merge_json(base: object, delta: object) -> object:
             merged[key] = _merge_json(merged.get(key), value)
         return merged
     return deepcopy(delta)
+
+
+def merge_scenario_data(snapshot: object, deltas: object) -> object:
+    return _merge_json(snapshot, deltas)

@@ -119,3 +119,52 @@ def test_compare_returns_error_for_unknown_scenario() -> None:
     assert raised.value.code == "UNKNOWN_SCENARIO"
     assert raised.value.status_code == 404
     assert connection.commit_count == 0
+
+
+def test_get_competency_snapshot_returns_scenario_data_with_deltas_applied() -> None:
+    snapshot = {
+        "periods": {
+            "2026-01": {
+                "demand": {"CLOUD": {"level": 2, "loadAmount": 10}},
+                "availability": {"P-001": {"hours": 40}},
+            }
+        }
+    }
+    deltas = {"periods": {"2026-01": {"availability": {"P-001": {"hours": 32}}}}}
+
+    class SnapshotCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def execute(self, statement: str, **parameters: object) -> None:
+            assert parameters == {"scenario_id": "S-001"}
+            self.row = ("P-001", "SNAP-001", json.dumps(deltas), json.dumps(snapshot))
+
+        def fetchone(self) -> tuple:
+            return self.row
+
+    class SnapshotConnection:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def cursor(self) -> SnapshotCursor:
+            return SnapshotCursor()
+
+        def close(self) -> None:
+            self.closed = True
+
+    connection = SnapshotConnection()
+    repository = ScenarioRepository(connection_factory=lambda: connection)
+
+    scenario = repository.get_competency_snapshot("S-001")
+
+    assert scenario["scenario_id"] == "S-001"
+    assert scenario["project_id"] == "P-001"
+    assert scenario["snapshot_id"] == "SNAP-001"
+    assert scenario["snapshot"]["periods"]["2026-01"]["availability"] == {
+        "P-001": {"hours": 32}
+    }
+    assert connection.closed

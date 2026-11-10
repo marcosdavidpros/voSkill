@@ -5,6 +5,7 @@ from starlette.responses import JSONResponse
 from ..competencies import CompetencyError
 from ..demands import DemandError
 from ..optimization_runs import OptimizationRunError
+from ..risk_thresholds import RiskThresholdError
 from ..scenario_comparison import ScenarioError
 from ..skill_relations import RelationError
 from ..suggestions import SuggestionError
@@ -46,6 +47,13 @@ def raise_relation_error(error: RelationError) -> None:
 
 
 def raise_optimization_run_error(error: OptimizationRunError) -> None:
+    raise HTTPException(
+        status_code=error.status_code,
+        detail={"code": error.code},
+    ) from error
+
+
+def raise_risk_threshold_error(error: RiskThresholdError) -> None:
     raise HTTPException(
         status_code=error.status_code,
         detail={"code": error.code},

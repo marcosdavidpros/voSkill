@@ -6,7 +6,7 @@ from uuid import uuid4
 import oracledb
 
 from .connection import open_oracle_connection
-from .scenario_comparison import ScenarioError, compare_scenarios
+from .scenario_comparison import ScenarioError, compare_scenarios, merge_scenario_data
 
 
 class ScenarioRepository:
@@ -120,6 +120,37 @@ class ScenarioRepository:
                 second_snapshot=self._json_value(second_scenario[5]),
                 second_deltas=self._json_value(second_scenario[4]),
             )
+        finally:
+            connection.close()
+
+    def get_competency_snapshot(self, scenario_id: str) -> dict[str, object]:
+        connection = self._connection_factory()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT S.PROJECT_ID, S.SNAPSHOT_ID, S.DELTAS_JSON, P.SNAPSHOT_JSON
+                      FROM VSK_SCENARIOS S
+                      JOIN VSK_SCENARIO_SNAPSHOTS P ON P.SNAPSHOT_ID = S.SNAPSHOT_ID
+                     WHERE S.SCENARIO_ID = :scenario_id
+                    """,
+                    scenario_id=scenario_id,
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    raise ScenarioError("SCENARIO_NOT_FOUND", 404)
+
+            snapshot = self._json_value(row[3])
+            deltas = self._json_value(row[2])
+            effective = merge_scenario_data(snapshot, deltas)
+            if not isinstance(effective, dict) or not isinstance(effective.get("periods"), dict):
+                raise ScenarioError("INVALID_SCENARIO_SNAPSHOT", 422)
+            return {
+                "scenario_id": scenario_id,
+                "project_id": row[0],
+                "snapshot_id": row[1],
+                "snapshot": effective,
+            }
         finally:
             connection.close()
 

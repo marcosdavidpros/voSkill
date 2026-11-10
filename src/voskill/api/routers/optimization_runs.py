@@ -84,3 +84,30 @@ def get_alternative_explanation(
         return explain_alternative(record, alternative_id, explainer)
     except OptimizationRunError as error:
         raise_optimization_run_error(error)
+
+
+@router.post("/optimization-runs/{run_id}/alternatives/{alternative_id}/apply")
+def apply_alternative(
+    run_id: str,
+    alternative_id: str,
+    access: Annotated[tuple[str, bool], Depends(get_optimization_run_access)],
+    repository: Annotated[OptimizationRunRepository, Depends(get_optimization_run_repository)],
+) -> None:
+    try:
+        record = repository.get_run(run_id)
+        actor_id, can_audit = access
+        if record["actor_id"] != actor_id and not can_audit:
+            raise OptimizationRunError("RUN_NOT_FOUND", 404)
+
+        result = record.get("result")
+        alternatives = result.get("feasible_alternatives", []) if isinstance(result, dict) else []
+        if not any(
+            isinstance(alternative, dict)
+            and alternative.get("alternative_id") == alternative_id
+            for alternative in alternatives
+        ):
+            raise OptimizationRunError("ALTERNATIVE_NOT_FOUND", 404)
+
+        raise OptimizationRunError("HUMAN_APPROVAL_REQUIRED", 409)
+    except OptimizationRunError as error:
+        raise_optimization_run_error(error)

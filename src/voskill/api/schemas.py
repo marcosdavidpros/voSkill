@@ -170,6 +170,8 @@ class AlternativeNarrativeResponse(BaseModel):
 class AlternativeExplanationResponse(BaseModel):
     run_id: str
     alternative_id: str
+    decision_support: Literal[True]
+    operational_status: Literal["pending_human_approval"]
     snapshot_id: str
     metrics: dict[str, object]
     metrics_origin: Literal["deterministic"]

@@ -173,6 +173,8 @@ def explain_alternative(
     return {
         "run_id": str(run["run_id"]),
         "alternative_id": alternative_id,
+        "decision_support": True,
+        "operational_status": "pending_human_approval",
         "snapshot_id": snapshot_id,
         "metrics": deterministic_metrics,
         "metrics_origin": "deterministic",

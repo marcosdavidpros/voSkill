@@ -39,6 +39,33 @@ def get_competency_editor(
     person_id: str,
     actor_id: Annotated[str, Depends(get_actor_id)],
 ) -> str:
+    action = (
+        "view_person_competencies"
+        if request.method == "GET"
+        else "modify_person_competencies"
+    )
+    return _require_person_access(request, person_id, actor_id, action)
+
+
+def get_competency_exporter(
+    request: Request,
+    person_id: str,
+    actor_id: Annotated[str, Depends(get_actor_id)],
+) -> str:
+    return _require_person_access(
+        request,
+        person_id,
+        actor_id,
+        "export_person_competencies",
+    )
+
+
+def _require_person_access(
+    request: Request,
+    person_id: str,
+    actor_id: str,
+    action: str,
+) -> str:
     authorized_person_ids = getattr(request.state, "authorized_person_ids", ())
     authenticated_person_id = getattr(request.state, "person_id", None)
     if (
@@ -52,11 +79,7 @@ def get_competency_editor(
         extra={
             "actor_id": actor_id,
             "resource_id": person_id,
-            "action": (
-                "view_person_competencies"
-                if request.method == "GET"
-                else "modify_person_competencies"
-            ),
+            "action": action,
             "outcome": "denied",
         },
     )

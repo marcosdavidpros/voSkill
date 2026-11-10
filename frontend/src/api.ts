@@ -41,6 +41,21 @@ export type RiskPanel = {
   }[];
 };
 
+export type AlternativeExplanation = {
+  run_id: string;
+  alternative_id: string;
+  decision_support: true;
+  operational_status: "pending_human_approval";
+  snapshot_id: string;
+  metrics: Record<string, unknown>;
+  metrics_origin: "deterministic";
+  narrative: {
+    status: "generated" | "unavailable";
+    text: string | null;
+  };
+  uncertainty: boolean;
+};
+
 export async function fetchCompetencyMap(scenarioId: string): Promise<CompetencyMap> {
   const response = await fetch(
     `/api/scenarios/${encodeURIComponent(scenarioId)}/competency-map`,
@@ -91,4 +106,22 @@ export async function saveCriticalSkillThreshold(
     const code = body?.detail?.code ?? `HTTP_${response.status}`;
     throw new Error(code);
   }
+}
+
+export async function fetchAlternativeExplanation(
+  runId: string,
+  alternativeId: string,
+): Promise<AlternativeExplanation> {
+  const response = await fetch(
+    `/api/optimization-runs/${encodeURIComponent(runId)}/alternatives/${encodeURIComponent(alternativeId)}/explanation`,
+    { credentials: "include" },
+  );
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    const code = body?.detail?.code ?? `HTTP_${response.status}`;
+    throw new Error(code);
+  }
+
+  return response.json() as Promise<AlternativeExplanation>;
 }

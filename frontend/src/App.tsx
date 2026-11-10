@@ -7,6 +7,7 @@ import {
   type CompetencyMap,
   type RiskPanel as RiskPanelData,
 } from "./api";
+import DecisionSupportPanel from "./DecisionSupportPanel";
 import RiskPanel from "./RiskPanel";
 
 const Plot = lazy(() => import("react-plotly.js"));
@@ -264,6 +265,7 @@ export default function App() {
             />
           </>
         )}
+        <DecisionSupportPanel />
       </main>
     </div>
   );

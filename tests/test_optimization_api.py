@@ -225,6 +225,8 @@ def test_explanation_references_run_snapshot_metrics_and_evidence() -> None:
     assert response.status_code == 200
     assert body["run_id"] == "RUN-001"
     assert body["alternative_id"] == "A-001"
+    assert body["decision_support"] is True
+    assert body["operational_status"] == "pending_human_approval"
     assert body["snapshot_id"] == "S-001"
     assert body["metrics"] == {"coverage": 0.82, "load": 0.70, "cost": 1200}
     assert body["metrics_origin"] == "deterministic"
@@ -234,6 +236,26 @@ def test_explanation_references_run_snapshot_metrics_and_evidence() -> None:
     assert body["uncertainty"] is False
     assert body["reason"] is None
     assert repository.records["RUN-001"]["result"] == record["result"]
+
+
+def test_apply_alternative_requires_human_approval_without_mutating_run() -> None:
+    repository = MemoryOptimizationRunRepository()
+    record = _explanation_run()
+    repository.records["RUN-001"] = record
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_optimization_run_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "POST",
+            "/optimization-runs/RUN-001/alternatives/A-001/apply",
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "HUMAN_APPROVAL_REQUIRED"
+    assert repository.records["RUN-001"] == record
 
 
 def test_explanation_keeps_deterministic_metrics_when_narrative_provider_fails() -> None:

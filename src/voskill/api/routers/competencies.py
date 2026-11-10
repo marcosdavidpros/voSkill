@@ -6,6 +6,7 @@ from ...competencies import CompetencyError, CompetencyRepository
 from ...skill_relations import SkillRelationRepository
 from ..dependencies import (
     get_competency_editor,
+    get_competency_exporter,
     get_competency_repository,
     get_skill_relation_repository,
 )
@@ -44,6 +45,21 @@ def create_person_competency(
 def list_person_competencies(
     person_id: str,
     actor_id: Annotated[str, Depends(get_competency_editor)],
+    repository: Annotated[CompetencyRepository, Depends(get_competency_repository)],
+) -> list[dict[str, object]]:
+    try:
+        return repository.list_for_person(person_id)
+    except CompetencyError as error:
+        raise_competency_error(error)
+
+
+@router.get(
+    "/people/{person_id}/competencies/export",
+    response_model=list[CompetencyResponse],
+)
+def export_person_competencies(
+    person_id: str,
+    _actor_id: Annotated[str, Depends(get_competency_exporter)],
     repository: Annotated[CompetencyRepository, Depends(get_competency_repository)],
 ) -> list[dict[str, object]]:
     try:

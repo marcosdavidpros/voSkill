@@ -65,6 +65,27 @@ const riskPanel = {
   ],
 };
 
+const alternativeExplanation = {
+  run_id: "RUN-001",
+  alternative_id: "A-001",
+  decision_support: true,
+  operational_status: "pending_human_approval",
+  snapshot_id: "S-001",
+  metrics: { coverage: 0.82, load: 0.7, cost: 1200 },
+  metrics_origin: "deterministic",
+  narrative: {
+    status: "generated",
+    origin: "generated",
+    text: "Cobertura apoiada pelas evidências registradas.",
+    claims: [],
+    reason: null,
+  },
+  unsupportedClaims: [],
+  uncertainty: false,
+  reason: null,
+  error: null,
+};
+
 function stubMapAndRiskPanel() {
   vi.stubGlobal(
     "fetch",
@@ -150,5 +171,35 @@ describe("competency map", () => {
       "/api/projects/P-001/critical-skill-thresholds/JAVA",
       expect.objectContaining({ method: "PUT", body: '{"threshold":3}' }),
     );
+  });
+
+  it("labels an alternative as decision support awaiting human approval", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        return {
+          ok: true,
+          json: async () =>
+            url.includes("/explanation")
+              ? alternativeExplanation
+              : url.includes("risk-panel")
+                ? riskPanel
+                : competencyMap,
+        };
+      }),
+    );
+    render(<App />);
+
+    await screen.findByRole("button", { name: "Carregar mapa" });
+    await user.type(screen.getByRole("textbox", { name: "ID da execução" }), "RUN-001");
+    await user.type(screen.getByRole("textbox", { name: "ID da alternativa" }), "A-001");
+    await user.click(screen.getByRole("button", { name: "Consultar explicação" }));
+
+    expect(await screen.findByText("Apoio à decisão")).toBeInTheDocument();
+    expect(screen.getByText("Pendente de aprovação humana")).toBeInTheDocument();
+    expect(screen.getByText("0,82")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Aplicar alternativa" })).not.toBeInTheDocument();
   });
 });

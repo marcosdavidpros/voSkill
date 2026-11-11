@@ -123,7 +123,7 @@ describe("competency map", () => {
 
     await screen.findByRole("button", { name: "Carregar mapa" });
     const wordmark = screen.getByRole("link", { name: "voSkill, ir ao conteúdo" });
-    const scenarioInput = screen.getByRole("textbox", { name: /Cenário/ });
+    const scenarioInput = screen.getByRole("textbox", { name: "Cenário" });
     const loadButton = screen.getByRole("button", { name: "Carregar mapa" });
     const tableRegion = screen.getByRole("region", {
       name: "Tabela de cobertura de competências",
@@ -193,7 +193,7 @@ describe("competency map", () => {
     render(<App />);
 
     await screen.findByRole("button", { name: "Carregar mapa" });
-    await user.type(screen.getByRole("textbox", { name: "ID da execução" }), "RUN-001");
+    await user.type(screen.getByRole("textbox", { name: "ID da execução para consultar explicação" }), "RUN-001");
     await user.type(screen.getByRole("textbox", { name: "ID da alternativa" }), "A-001");
     await user.click(screen.getByRole("button", { name: "Consultar explicação" }));
 

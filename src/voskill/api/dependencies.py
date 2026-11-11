@@ -154,18 +154,21 @@ def require_scenario_people_access(
     request: Request,
     actor_id: str,
     scenario_id: str,
-    project_id: str,
+    project_id: str | set[str],
     person_ids: set[str],
+    action: str = "view_competency_map",
 ) -> None:
     authorized_people = set(getattr(request.state, "authorized_person_ids", ()))
     authenticated_person_id = getattr(request.state, "person_id", None)
     authorized_projects = set(getattr(request.state, "authorized_project_ids", ()))
     can_view_all = getattr(request.state, "can_view_scenario_data", False) is True
-    all_people_authorized = all(
+    project_ids = {project_id} if isinstance(project_id, str) else project_id
+    all_projects_authorized = bool(project_ids) and project_ids.issubset(authorized_projects)
+    all_people_authorized = bool(person_ids) and all(
         person_id in authorized_people or person_id == authenticated_person_id
         for person_id in person_ids
     )
-    if can_view_all or project_id in authorized_projects or all_people_authorized:
+    if can_view_all or all_projects_authorized or all_people_authorized:
         return
 
     logging.getLogger("voskill.audit").warning(
@@ -173,7 +176,7 @@ def require_scenario_people_access(
         extra={
             "actor_id": actor_id,
             "resource_id": scenario_id,
-            "action": "view_competency_map",
+            "action": action,
             "outcome": "denied",
         },
     )

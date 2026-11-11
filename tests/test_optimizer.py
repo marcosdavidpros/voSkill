@@ -46,6 +46,12 @@ def test_nsga2_returns_traceable_feasible_non_dominated_alternatives() -> None:
     assert result["run_metadata"]["snapshot_id"] == "S-001"
     assert result["run_metadata"]["seed"] == 42
     assert result["run_metadata"]["algorithm"] == "NSGA-II"
+    assert result["constraint_evaluation"]["checked_hard_constraints"] == [
+        "availability_missing",
+        "capacity_exceeded",
+    ]
+    assert result["constraint_evaluation"]["rejected_alternatives"] == []
+    assert result["constraint_evaluation"]["soft_preference_metrics"] == []
 
     for alternative in alternatives:
         assert alternative["status"] == "feasible"

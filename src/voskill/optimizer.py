@@ -93,6 +93,12 @@ def optimize_snapshot(
         "feasible_alternatives": feasible_alternatives,
         "rejected_alternatives": feasibility["rejected_alternatives"],
         "conflicting_constraint_ids": feasibility["conflicting_constraint_ids"],
+        "constraint_evaluation": {
+            "checked_hard_constraints": feasibility["checked_hard_constraints"],
+            "conflicting_constraint_ids": feasibility["conflicting_constraint_ids"],
+            "rejected_alternatives": feasibility["rejected_alternatives"],
+            "soft_preference_metrics": feasibility["soft_preference_metrics"],
+        },
         "run_metadata": {
             "snapshot_id": snapshot_id,
             "seed": seed,

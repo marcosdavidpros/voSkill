@@ -7,7 +7,8 @@ function formatMetric(value: unknown): string {
     return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value);
   }
   if (typeof value === "object" && value !== null && "status" in value && value.status === "unavailable") {
-    return "Indisponível";
+    const reason = "reason" in value && typeof value.reason === "string" ? `: ${value.reason}` : "";
+    return `Indisponível${reason}`;
   }
   return String(value);
 }
@@ -18,6 +19,14 @@ export default function DecisionSupportPanel() {
   const [explanation, setExplanation] = useState<AlternativeExplanation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const directionGroups = Object.entries(explanation?.metric_definitions ?? {}).reduce<Record<string, string[]>>(
+    (groups, [name, definition]) => {
+      groups[definition.direction] ??= [];
+      groups[definition.direction].push(definition.label || name);
+      return groups;
+    },
+    {},
+  );
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -46,6 +55,7 @@ export default function DecisionSupportPanel() {
           ID da execução
           <input
             id="optimization-run-id"
+            aria-label="ID da execução para consultar explicação"
             value={runId}
             onChange={(event) => setRunId(event.target.value)}
             autoComplete="off"
@@ -75,11 +85,27 @@ export default function DecisionSupportPanel() {
           <p className="scenario-meta">
             Execução {explanation.run_id} · Alternativa {explanation.alternative_id} · Snapshot {explanation.snapshot_id}
           </p>
+          {Object.entries(directionGroups).map(([direction, labels]) => (
+            <p className="metric-direction-summary" key={direction}>
+              Direção: {direction === "minimize" ? "Minimizar" : "Maximizar"} · {labels.join(", ")}
+            </p>
+          ))}
           <dl className="decision-metrics">
             {Object.entries(explanation.metrics).map(([name, value]) => (
               <div key={name}>
-                <dt>{name.replaceAll("_", " ")}</dt>
+                <dt>{explanation.metric_definitions?.[name]?.label ?? name.replaceAll("_", " ")}</dt>
                 <dd>{formatMetric(value)}</dd>
+                <dd className="metric-context">
+                  {explanation.metric_definitions?.[name] ? (
+                    <>
+                      <span>{explanation.metric_definitions[name].definition}</span>
+                      <span>Unidade: {explanation.metric_definitions[name].unit}</span>
+                      <span>Fonte: {explanation.metric_definitions[name].source}</span>
+                    </>
+                  ) : (
+                    <span>Definição indisponível.</span>
+                  )}
+                </dd>
               </div>
             ))}
           </dl>

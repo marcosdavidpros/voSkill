@@ -1,6 +1,8 @@
 from collections.abc import Mapping, Sequence
 from decimal import Decimal
 
+HARD_CONSTRAINT_CODES = ("availability_missing", "capacity_exceeded")
+
 
 def filter_capacity_feasible(
     candidates: Sequence[Mapping[str, object]],
@@ -67,5 +69,6 @@ def filter_capacity_feasible(
         "feasible_alternatives": feasible_alternatives,
         "rejected_alternatives": rejected_alternatives,
         "conflicting_constraint_ids": sorted(conflicting_constraint_ids),
+        "checked_hard_constraints": list(HARD_CONSTRAINT_CODES),
         "soft_preference_metrics": soft_preference_metrics,
     }

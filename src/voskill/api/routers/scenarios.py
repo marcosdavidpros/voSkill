@@ -1,10 +1,14 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from ...scenario_comparison import ScenarioError
 from ...scenarios import ScenarioRepository
-from ..dependencies import get_actor_id, get_scenario_repository
+from ..dependencies import (
+    get_actor_id,
+    get_scenario_repository,
+    require_scenario_people_access,
+)
 from ..errors import raise_scenario_error
 from ..schemas import AlternativePayload, AlternativeResponse
 
@@ -38,9 +42,28 @@ def compare_scenarios(
     first_scenario_id: str,
     second_scenario_id: str,
     actor_id: Annotated[str, Depends(get_actor_id)],
+    request: Request,
     repository: Annotated[ScenarioRepository, Depends(get_scenario_repository)],
 ) -> dict[str, object]:
     try:
+        first = repository.get_competency_snapshot(first_scenario_id)
+        second = repository.get_competency_snapshot(second_scenario_id)
+        snapshots = (first["snapshot"], second["snapshot"])
+        person_ids = {
+            str(person_id)
+            for snapshot in snapshots
+            for assumptions in snapshot["periods"].values()
+            if isinstance(assumptions, dict)
+            for person_id in assumptions.get("availability", {})
+        }
+        require_scenario_people_access(
+            request=request,
+            actor_id=actor_id,
+            scenario_id=f"{first_scenario_id},{second_scenario_id}",
+            project_id={str(first["project_id"]), str(second["project_id"])},
+            person_ids=person_ids,
+            action="compare_scenarios",
+        )
         return repository.compare(first_scenario_id, second_scenario_id)
     except ScenarioError as error:
         raise_scenario_error(error)

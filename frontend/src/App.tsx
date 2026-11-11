@@ -7,6 +7,7 @@ import {
   type CompetencyMap,
   type RiskPanel as RiskPanelData,
 } from "./api";
+import ComparisonPanel from "./ComparisonPanel";
 import DecisionSupportPanel from "./DecisionSupportPanel";
 import RiskPanel from "./RiskPanel";
 
@@ -237,11 +238,21 @@ export default function App() {
                                 <li key={`${skill.skill_id}-${holder.person_id}-${holder.status}`}>
                                   <span className="person-id">{holder.person_id}</span>
                                   {holder.status === "confirmed" ? (
-                                    <span>{holder.proficiency_level}/5 · {holder.evidence}</span>
+                                    <>
+                                      <span>{holder.proficiency_level}/5 · {holder.evidence}</span>
+                                      <span className="evidence-provenance">
+                                        Origem {holder.origin_type ?? "Indisponível"} · Revisada em {holder.review_date ?? "Data não informada"}
+                                      </span>
+                                    </>
                                   ) : (
-                                    <span>
-                                      Inferida · {Math.round((holder.confidence ?? 0) * 100)}% de confiança · {holder.review_state}
-                                    </span>
+                                    <>
+                                      <span>
+                                        Inferida · {Math.round((holder.confidence ?? 0) * 100)}% de confiança · {holder.review_state}
+                                      </span>
+                                      <span className="evidence-provenance">
+                                        Fonte {holder.source_skill_id ?? "Indisponível"} · Relação {holder.relation_id ?? "Indisponível"}
+                                      </span>
+                                    </>
                                   )}
                                 </li>
                               ))}
@@ -266,6 +277,7 @@ export default function App() {
           </>
         )}
         <DecisionSupportPanel />
+        <ComparisonPanel />
       </main>
     </div>
   );

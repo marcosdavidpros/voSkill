@@ -82,6 +82,61 @@ def _explanation_run() -> dict[str, object]:
     }
 
 
+def _comparison_run() -> dict[str, object]:
+    record = _explanation_run()
+    record["configuration"] = {
+        "population_size": 64,
+        "requested_population_size": 64,
+        "generations": 40,
+        "objectives": ["skill_gap_hours", "peak_utilization"],
+    }
+    record["result"]["feasible_alternatives"] = [
+        {
+            "alternative_id": "A-001",
+            "objective_metrics": {"skill_gap_hours": 0.18, "peak_utilization": 0.70},
+        },
+        {
+            "alternative_id": "A-002",
+            "objective_metrics": {"skill_gap_hours": 0.22, "peak_utilization": 0.60},
+        },
+    ]
+    record["result"]["run_metadata"] = {
+        "snapshot_id": "S-001",
+        "seed": 42,
+        "algorithm": "NSGA-II",
+        "algorithm_version": "pymoo-0.6.2",
+        "configuration": {
+            "population_size": 64,
+            "requested_population_size": 64,
+            "generations": 40,
+            "objectives": ["skill_gap_hours", "peak_utilization"],
+        },
+    }
+    record["result"]["conflicting_constraint_ids"] = ["capacity:P-001:2026-01"]
+    record["result"]["rejected_alternatives"] = [
+        {
+            "alternative_id": "A-003",
+            "violations": [
+                {
+                    "constraint_id": "capacity:P-001:2026-01",
+                    "code": "capacity_exceeded",
+                    "person_id": "P-001",
+                    "period": "2026-01",
+                    "assigned_hours": 48,
+                    "available_hours": 40,
+                }
+            ],
+        }
+    ]
+    record["result"]["constraint_evaluation"] = {
+        "checked_hard_constraints": ["availability_missing", "capacity_exceeded"],
+        "conflicting_constraint_ids": ["capacity:P-001:2026-01"],
+        "rejected_alternatives": record["result"]["rejected_alternatives"],
+        "soft_preference_metrics": [],
+    }
+    return record
+
+
 def _snapshot() -> dict:
     return {
         "snapshot_id": "S-001",
@@ -352,3 +407,180 @@ def test_explanation_omits_claims_without_references_and_marks_uncertainty() -> 
     assert body["reason"] == "missing_evidence"
     assert body["narrative"]["claims"] == []
     assert body["narrative"]["text"] is None
+
+
+def test_explanation_includes_definitions_for_optimizer_objectives() -> None:
+    repository = MemoryOptimizationRunRepository()
+    record = _explanation_run()
+    record["result"]["feasible_alternatives"][0]["objective_metrics"] = {
+        "skill_gap_hours": 0.18,
+        "peak_utilization": 0.70,
+    }
+    repository.records["RUN-001"] = record
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_optimization_run_repository] = lambda: repository
+    app.dependency_overrides[get_alternative_explainer] = lambda: DeterministicAlternativeExplainer()
+
+    try:
+        response = _request(
+            "GET",
+            "/optimization-runs/RUN-001/alternatives/A-001/explanation",
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    definitions = response.json()["metric_definitions"]
+    assert response.status_code == 200
+    assert definitions["skill_gap_hours"]["direction"] == "minimize"
+    assert definitions["skill_gap_hours"]["unit"] == "proficiency-level × configured load unit"
+    assert definitions["skill_gap_hours"]["source"].endswith("objective_metrics.skill_gap_hours")
+    assert definitions["peak_utilization"]["direction"] == "minimize"
+    assert definitions["peak_utilization"]["unit"] == "ratio"
+    assert definitions["peak_utilization"]["source"].endswith("objective_metrics.peak_utilization")
+
+
+def test_alternative_comparison_returns_separate_objectives_and_trade_offs() -> None:
+    repository = MemoryOptimizationRunRepository()
+    repository.records["RUN-001"] = _comparison_run()
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_optimization_run_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "POST",
+            "/optimization-runs/RUN-001/alternatives/compare",
+            {"alternative_ids": ["A-001", "A-002"]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["run_id"] == "RUN-001"
+    alternatives = {item["alternative_id"]: item for item in body["alternatives"]}
+    assert alternatives["A-001"]["objective_metrics"]["skill_gap_hours"]["value"] == 0.18
+    assert alternatives["A-001"]["objective_metrics"]["peak_utilization"]["value"] == 0.70
+    assert alternatives["A-002"]["objective_metrics"]["skill_gap_hours"]["value"] == 0.22
+    assert alternatives["A-002"]["objective_metrics"]["peak_utilization"]["value"] == 0.60
+    assert body["trade_offs"] == [
+        {
+            "alternative_ids": ["A-001", "A-002"],
+            "objectives": ["peak_utilization", "skill_gap_hours"],
+        }
+    ]
+    assert body["metric_definitions"]["skill_gap_hours"]["unit"] == "proficiency-level × configured load unit"
+    assert body["metric_definitions"]["skill_gap_hours"]["direction"] == "minimize"
+    assert body["metric_definitions"]["peak_utilization"]["unit"] == "ratio"
+    assert body["metric_definitions"]["peak_utilization"]["direction"] == "minimize"
+    assert body["run_premises"] == {
+        "snapshot_id": "S-001",
+        "algorithm": "NSGA-II",
+        "algorithm_version": "pymoo-0.6.2",
+        "seed": 42,
+        "configuration": {
+            "population_size": 64,
+                "requested_population_size": 64,
+            "generations": 40,
+            "objectives": ["skill_gap_hours", "peak_utilization"],
+        },
+    }
+    assert body["constraint_trace"]["conflicting_constraint_ids"] == ["capacity:P-001:2026-01"]
+    assert body["constraint_trace"]["rejected_alternatives"][0]["violations"][0] == {
+        "constraint_id": "capacity:P-001:2026-01",
+        "code": "capacity_exceeded",
+        "person_id": "P-001",
+        "period": "2026-01",
+        "assigned_hours": 48,
+        "available_hours": 40,
+    }
+    assert body["constraint_trace"]["checked_hard_constraints"] == [
+        "availability_missing",
+        "capacity_exceeded",
+    ]
+    assert body["constraint_trace"]["soft_preference_metrics"] == []
+    assert "score" not in body
+    assert "allocation" not in alternatives["A-001"]
+
+
+def test_alternative_comparison_marks_a_missing_objective_unavailable() -> None:
+    repository = MemoryOptimizationRunRepository()
+    record = _comparison_run()
+    record["result"]["feasible_alternatives"][1]["objective_metrics"].pop("peak_utilization")
+    repository.records["RUN-001"] = record
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_optimization_run_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "POST",
+            "/optimization-runs/RUN-001/alternatives/compare",
+            {"alternative_ids": ["A-001", "A-002"]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    alternative = next(item for item in response.json()["alternatives"] if item["alternative_id"] == "A-002")
+    assert response.status_code == 200
+    metric = alternative["objective_metrics"]["peak_utilization"]
+    assert metric["status"] == "unavailable"
+    assert metric["reason"] == "missing_peak_utilization_input"
+    assert metric["value"] is None
+
+
+def test_alternative_comparison_rejects_unknown_id_without_partial_result() -> None:
+    repository = MemoryOptimizationRunRepository()
+    repository.records["RUN-001"] = _comparison_run()
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_optimization_run_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "POST",
+            "/optimization-runs/RUN-001/alternatives/compare",
+            {"alternative_ids": ["A-001", "A-404"]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "UNKNOWN_ALTERNATIVE"
+    assert "alternatives" not in response.json()
+
+
+def test_alternative_comparison_hides_run_from_non_owner() -> None:
+    repository = MemoryOptimizationRunRepository()
+    repository.records["RUN-001"] = _comparison_run()
+    app.dependency_overrides[get_actor_id] = lambda: "U-999"
+    app.dependency_overrides[get_optimization_run_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "POST",
+            "/optimization-runs/RUN-001/alternatives/compare",
+            {"alternative_ids": ["A-001", "A-002"]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "RUN_NOT_FOUND"
+
+
+def test_authorized_auditor_can_compare_run_alternatives() -> None:
+    repository = MemoryOptimizationRunRepository()
+    repository.records["RUN-001"] = _comparison_run()
+    app.dependency_overrides[get_actor_id] = lambda: "U-999"
+    app.dependency_overrides[get_optimization_run_repository] = lambda: repository
+
+    try:
+        response = _request(
+            "POST",
+            "/optimization-runs/RUN-001/alternatives/compare",
+            {"alternative_ids": ["A-001", "A-002"]},
+            state={"can_audit_optimization_runs": True},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["run_id"] == "RUN-001"

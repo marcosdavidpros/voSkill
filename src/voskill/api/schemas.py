@@ -153,6 +153,10 @@ class OptimizationRunResponse(BaseModel):
     created_at: datetime
 
 
+class AlternativeComparisonPayload(BaseModel):
+    alternative_ids: list[str] = Field(min_length=2, max_length=10)
+
+
 class AlternativeExplanationClaimResponse(BaseModel):
     text: str
     metric_references: list[str] = Field(default_factory=list)
@@ -167,6 +171,36 @@ class AlternativeNarrativeResponse(BaseModel):
     reason: Literal["narrative_unavailable"] | None = None
 
 
+class MetricDefinitionResponse(BaseModel):
+    label: str
+    definition: str
+    unit: str
+    source: str
+    direction: Literal["maximize", "minimize"]
+
+
+class ObjectiveMetricResponse(BaseModel):
+    status: Literal["available", "unavailable"]
+    value: float | None = None
+    reason: str | None = None
+    unit: str | None = None
+    source: str | None = None
+
+
+class AlternativeComparisonItemResponse(BaseModel):
+    alternative_id: str
+    objective_metrics: dict[str, ObjectiveMetricResponse]
+
+
+class AlternativeComparisonResponse(BaseModel):
+    run_id: str
+    run_premises: dict[str, object]
+    constraint_trace: dict[str, object]
+    alternatives: list[AlternativeComparisonItemResponse]
+    trade_offs: list[dict[str, object]]
+    metric_definitions: dict[str, MetricDefinitionResponse]
+
+
 class AlternativeExplanationResponse(BaseModel):
     run_id: str
     alternative_id: str
@@ -174,6 +208,7 @@ class AlternativeExplanationResponse(BaseModel):
     operational_status: Literal["pending_human_approval"]
     snapshot_id: str
     metrics: dict[str, object]
+    metric_definitions: dict[str, MetricDefinitionResponse]
     metrics_origin: Literal["deterministic"]
     narrative: AlternativeNarrativeResponse
     unsupported_claims: list[AlternativeExplanationClaimResponse] = Field(

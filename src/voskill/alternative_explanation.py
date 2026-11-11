@@ -9,6 +9,24 @@ class AlternativeNarrativeUnavailable(RuntimeError):
     pass
 
 
+METRIC_DEFINITIONS: dict[str, dict[str, str]] = {
+    "skill_gap_hours": {
+        "label": "Lacuna ponderada de competência",
+        "definition": "Soma do déficit entre nível exigido e confirmado multiplicado pela carga atribuída.",
+        "unit": "proficiency-level × configured load unit",
+        "source": "OptimizationRun.result.feasible_alternatives.objective_metrics.skill_gap_hours",
+        "direction": "minimize",
+    },
+    "peak_utilization": {
+        "label": "Pico de utilização",
+        "definition": "Maior razão entre carga atribuída e disponibilidade por pessoa e período.",
+        "unit": "ratio",
+        "source": "OptimizationRun.result.feasible_alternatives.objective_metrics.peak_utilization",
+        "direction": "minimize",
+    },
+}
+
+
 class AlternativeExplainer(Protocol):
     def explain(
         self,
@@ -177,6 +195,11 @@ def explain_alternative(
         "operational_status": "pending_human_approval",
         "snapshot_id": snapshot_id,
         "metrics": deterministic_metrics,
+        "metric_definitions": {
+            name: dict(METRIC_DEFINITIONS[name])
+            for name in sorted(deterministic_metrics)
+            if name in METRIC_DEFINITIONS
+        },
         "metrics_origin": "deterministic",
         "narrative": narrative,
         "unsupported_claims": [],

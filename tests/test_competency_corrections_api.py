@@ -1,12 +1,13 @@
 from api_helpers import MemoryCompetencyRepository, _existing_competency
 from conftest import _request
 
-from voskill.main import app, get_competency_repository
+from voskill.main import app, get_actor_id, get_competency_repository
 
 
 def test_authorized_competency_correction_updates_value_and_history() -> None:
     repository = MemoryCompetencyRepository()
     repository.rows.append(_existing_competency())
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
     app.dependency_overrides[get_competency_repository] = lambda: repository
 
     response = _request(
@@ -38,6 +39,7 @@ def test_authorized_competency_correction_updates_value_and_history() -> None:
 def test_person_can_correct_own_competency() -> None:
     repository = MemoryCompetencyRepository()
     repository.rows.append(_existing_competency())
+    app.dependency_overrides[get_actor_id] = lambda: "P-001"
     app.dependency_overrides[get_competency_repository] = lambda: repository
 
     response = _request(
@@ -63,6 +65,7 @@ def test_unauthorized_competency_correction_returns_403_without_changes() -> Non
     repository = MemoryCompetencyRepository()
     repository.rows.append(_existing_competency())
     original_rows = [row.copy() for row in repository.rows]
+    app.dependency_overrides[get_actor_id] = lambda: "U-999"
     app.dependency_overrides[get_competency_repository] = lambda: repository
 
     response = _request(

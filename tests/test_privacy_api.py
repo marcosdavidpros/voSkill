@@ -3,12 +3,13 @@ import logging
 from api_helpers import MemoryCompetencyRepository, _existing_competency
 from conftest import _request
 
-from voskill.main import app, get_competency_repository
+from voskill.main import app, get_actor_id, get_competency_repository
 
 
 def test_unauthorized_profile_read_is_forbidden_and_audited_without_profile_data(caplog) -> None:
     repository = MemoryCompetencyRepository()
     repository.rows.append(_existing_competency())
+    app.dependency_overrides[get_actor_id] = lambda: "U-999"
     app.dependency_overrides[get_competency_repository] = lambda: repository
 
     try:
@@ -42,6 +43,7 @@ def test_unauthorized_profile_read_is_forbidden_and_audited_without_profile_data
 def test_unauthorized_profile_export_is_forbidden_and_audited_without_profile_data(caplog) -> None:
     repository = MemoryCompetencyRepository()
     repository.rows.append(_existing_competency())
+    app.dependency_overrides[get_actor_id] = lambda: "U-999"
     app.dependency_overrides[get_competency_repository] = lambda: repository
 
     try:
@@ -73,6 +75,7 @@ def test_unauthorized_profile_export_is_forbidden_and_audited_without_profile_da
 def test_authorized_profile_export_returns_competencies() -> None:
     repository = MemoryCompetencyRepository()
     repository.rows.append(_existing_competency())
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
     app.dependency_overrides[get_competency_repository] = lambda: repository
 
     try:

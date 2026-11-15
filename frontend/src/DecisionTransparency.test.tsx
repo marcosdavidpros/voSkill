@@ -95,6 +95,9 @@ describe("decision transparency", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
+        if (url.endsWith("/auth/me")) {
+          return { ok: true, json: async () => ({ actor_id: "A0091250", can_view: true, can_edit: false }) };
+        }
         const body = url.includes("competency-map")
           ? competencyMap
           : url.includes("risk-panel")

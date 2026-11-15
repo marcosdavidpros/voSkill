@@ -89,6 +89,9 @@ const alternativeComparison = {
 function stubDashboardFetch() {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
+    if (url.endsWith("/auth/me")) {
+      return { ok: true, json: async () => ({ actor_id: "A0091250", can_view: true, can_edit: false }) };
+    }
     const body = url.includes("competency-map")
       ? competencyMap
       : url.includes("risk-panel")
@@ -170,7 +173,7 @@ describe("accessible comparison panel", () => {
     stubDashboardFetch();
     render(<App />);
 
-    const panel = screen.getByRole("tabpanel", { name: "Cenários" });
+    const panel = await screen.findByRole("tabpanel", { name: "Cenários" });
     await user.type(within(panel).getByRole("textbox", { name: "Cenário base" }), "S-001");
     await user.type(within(panel).getByRole("textbox", { name: "Cenário para comparar" }), "S-002");
     await user.click(within(panel).getByRole("button", { name: "Comparar cenários" }));

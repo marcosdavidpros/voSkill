@@ -4,11 +4,21 @@ from typing import Annotated, Protocol
 from fastapi import Depends, HTTPException, Request
 
 from ..alternative_explanation import AlternativeExplainer, UnavailableAlternativeExplainer
+from ..authentication import (
+    AuthenticationService,
+    AuthenticationUnavailable,
+    PortalPrincipal,
+    create_authentication_service,
+)
+from ..base_scenarios import BaseScenarioRepository
+from ..catalog import CatalogRepository
 from ..competencies import CompetencyRepository
 from ..demands import DemandRepository
 from ..optimization_runs import OptimizationRunRepository
+from ..projects import ProjectRepository
 from ..risk_thresholds import RiskThresholdRepository
 from ..scenarios import ScenarioRepository
+from ..session import InvalidSession, SessionCodec
 from ..skill_relations import SkillRelationRepository
 from ..suggestion_review import SuggestionReviewRepository
 from ..suggestions import SuggestionError
@@ -24,14 +34,71 @@ class UnavailableCompetencyExtractor:
         raise SuggestionError("PROVIDER_UNAVAILABLE", 503)
 
 
-def get_actor_id(request: Request) -> str:
-    actor_id = getattr(request.state, "actor_id", None)
-    if not isinstance(actor_id, str) or not actor_id.strip():
+def get_session_codec() -> SessionCodec | None:
+    try:
+        return SessionCodec.from_environment()
+    except AuthenticationUnavailable:
+        return None
+
+
+def get_authentication_service() -> AuthenticationService:
+    try:
+        return create_authentication_service()
+    except AuthenticationUnavailable as error:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "AUTHENTICATION_UNAVAILABLE"},
+        ) from error
+
+
+def get_session_principal(
+    request: Request,
+    codec: Annotated[SessionCodec | None, Depends(get_session_codec)],
+) -> PortalPrincipal:
+    token = request.cookies.get("voskill_session")
+    if not token:
         raise HTTPException(
             status_code=401,
             detail={"code": "AUTHENTICATION_REQUIRED"},
         )
-    return actor_id
+    if codec is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "AUTHENTICATION_UNAVAILABLE"},
+        )
+    try:
+        principal = codec.decode(token)
+    except InvalidSession as error:
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "AUTHENTICATION_REQUIRED"},
+        ) from error
+    request.state.actor_id = principal.actor_id
+    request.state.can_view = principal.can_view
+    request.state.can_edit = principal.can_edit
+    request.state.can_view_scenario_data = principal.can_view
+    request.state.can_audit_optimization_runs = principal.can_view
+    request.state.can_manage_risk_thresholds = principal.can_edit
+    request.state.can_manage_skill_relations = principal.can_edit
+    return principal
+
+
+def get_actor_id(
+    request: Request,
+    principal: Annotated[PortalPrincipal, Depends(get_session_principal)],
+) -> str:
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", "")
+    read_only_post = (
+        request.method == "POST"
+        and route_path == "/optimization-runs/{run_id}/alternatives/compare"
+    )
+    if request.method in {"GET", "HEAD", "OPTIONS"} or read_only_post:
+        if not principal.can_view:
+            raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
+    elif not principal.can_edit:
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN"})
+    return principal.actor_id
 
 
 def get_competency_editor(
@@ -68,11 +135,12 @@ def _require_person_access(
 ) -> str:
     authorized_person_ids = getattr(request.state, "authorized_person_ids", ())
     authenticated_person_id = getattr(request.state, "person_id", None)
-    if (
+    allowed = getattr(request.state, "can_view_scenario_data", False) is True or (
         actor_id == person_id
         or authenticated_person_id == person_id
         or person_id in authorized_person_ids
-    ):
+    )
+    if allowed:
         return actor_id
     logging.getLogger("voskill.audit").warning(
         "access_denied",
@@ -91,6 +159,8 @@ def get_competency_reviewer(
     person_id: str,
     actor_id: Annotated[str, Depends(get_actor_id)],
 ) -> str:
+    if getattr(request.state, "can_edit", False) is True:
+        return actor_id
     reviewer_person_ids = getattr(request.state, "authorized_person_ids", ())
     if person_id in reviewer_person_ids:
         return actor_id
@@ -110,8 +180,16 @@ def get_demand_repository() -> DemandRepository:
     return DemandRepository()
 
 
+def get_project_repository() -> ProjectRepository:
+    return ProjectRepository()
+
+
 def get_competency_repository() -> CompetencyRepository:
     return CompetencyRepository()
+
+
+def get_catalog_repository() -> CatalogRepository:
+    return CatalogRepository()
 
 
 def get_suggestion_repository() -> SuggestionReviewRepository:
@@ -124,6 +202,10 @@ def get_competency_extractor() -> CompetencyExtractor:
 
 def get_scenario_repository() -> ScenarioRepository:
     return ScenarioRepository()
+
+
+def get_base_scenario_repository() -> BaseScenarioRepository:
+    return BaseScenarioRepository()
 
 
 def get_skill_relation_repository() -> SkillRelationRepository:

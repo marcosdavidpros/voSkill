@@ -5,6 +5,16 @@ from voskill.database import CompetencyError
 from voskill.main import app, get_actor_id, get_competency_repository
 
 
+def test_local_competency_environment_no_longer_bypasses_authentication(monkeypatch) -> None:
+    monkeypatch.setenv("VOSKILL_LOCAL_COMPETENCIES", "1")
+    monkeypatch.setenv("VOSKILL_LOCAL_PERSON_IDS", "P-001")
+
+    response = _request("GET", "/people/P-001/competencies")
+
+    assert response.status_code == 401
+    assert response.json()["detail"]["code"] == "AUTHENTICATION_REQUIRED"
+
+
 def test_manual_competency_create_and_read_returns_exact_values() -> None:
     repository = MemoryCompetencyRepository()
     app.dependency_overrides[get_actor_id] = lambda: "U-001"

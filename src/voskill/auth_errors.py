@@ -1,0 +1,2 @@
+class AuthenticationUnavailable(RuntimeError):
+    pass

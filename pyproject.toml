@@ -9,6 +9,7 @@ description = "API de planejamento de competências e demandas de equipe"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115,<1",
+    "ldap3>=2.9,<3",
     "oracledb>=2.5,<4",
     "pymoo>=0.6.1.5,<0.7",
     "python-dotenv>=1.0,<2",

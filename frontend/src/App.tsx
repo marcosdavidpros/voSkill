@@ -2,14 +2,23 @@ import { lazy, Suspense, useEffect, useState } from "react";
 
 import {
   fetchCompetencyMap,
+  fetchAuthenticatedPrincipal,
   fetchRiskPanel,
   saveCriticalSkillThreshold,
+  createSession,
+  endSession,
   type CompetencyMap,
+  type AuthenticatedPrincipal,
   type RiskPanel as RiskPanelData,
 } from "./api";
 import ComparisonPanel from "./ComparisonPanel";
+import CompetencyPanel from "./CompetencyPanel";
 import DecisionSupportPanel from "./DecisionSupportPanel";
+import LoginPanel from "./LoginPanel";
+import OptimizationPanel from "./OptimizationPanel";
+import ProjectPanel from "./ProjectPanel";
 import RiskPanel from "./RiskPanel";
+import ScenarioSetup from "./ScenarioSetup";
 
 const Plot = lazy(() => import("react-plotly.js"));
 
@@ -22,6 +31,9 @@ const statusLabels = {
 const statusOrder = ["confirmed", "inferred", "uncovered"] as const;
 
 export default function App() {
+  const [principal, setPrincipal] = useState<AuthenticatedPrincipal | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [scenarioId, setScenarioId] = useState("S-001");
   const [competencyMap, setCompetencyMap] = useState<CompetencyMap | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -69,8 +81,50 @@ export default function App() {
   }
 
   useEffect(() => {
-    void loadMap("S-001");
+    let active = true;
+    void fetchAuthenticatedPrincipal()
+      .then((authenticated) => {
+        if (active) setPrincipal(authenticated);
+      })
+      .catch((caught: unknown) => {
+        if (!active) return;
+        setPrincipal(null);
+        if (caught instanceof Error && caught.message !== "AUTHENTICATION_REQUIRED") {
+          setAuthError("Não foi possível verificar a sessão. Tente entrar novamente.");
+        }
+      })
+      .finally(() => {
+        if (active) setAuthReady(true);
+      });
+    return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (!authReady || !principal?.can_view) return;
+    void loadMap("S-001");
+  }, [authReady, principal?.actor_id]);
+
+  async function signIn(username: string, password: string) {
+    setAuthError(null);
+    await createSession(username, password);
+    const authenticated = await fetchAuthenticatedPrincipal();
+    if (!authenticated.can_view) throw new Error("INVALID_CREDENTIALS");
+    setPrincipal(authenticated);
+  }
+
+  async function signOut() {
+    try {
+      await endSession();
+    } catch {
+      setAuthError("Não foi possível confirmar o encerramento da sessão no servidor.");
+    } finally {
+      setPrincipal(null);
+      setCompetencyMap(null);
+      setRiskPanel(null);
+      setRiskPanelError(null);
+      setError(null);
+    }
+  }
 
   const statusCounts = statusOrder.map((status) =>
     competencyMap?.skills.filter((skill) => skill.status === status).length ?? 0,
@@ -84,6 +138,24 @@ export default function App() {
     void loadMap(scenarioId.trim());
   }
 
+  if (!authReady) {
+    return <main className="main-content" role="status">Verificando sessão…</main>;
+  }
+
+  if (!principal?.can_view) {
+    return (
+      <div className="app-shell">
+        <header className="topbar">
+          <a className="wordmark" href="#main" aria-label="voSkill, ir ao conteúdo">
+            <span className="wordmark-mark" aria-hidden="true">v</span><span>voSkill</span>
+          </a>
+          <span className="topbar-section">Planejamento de competências</span>
+        </header>
+        <main id="main" className="main-content"><LoginPanel error={authError} onLogin={signIn} /></main>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -92,7 +164,10 @@ export default function App() {
           <span>voSkill</span>
         </a>
         <span className="topbar-section">Planejamento de competências</span>
-        <span className="environment-label">MVP</span>
+        <div className="account-actions">
+          <span className="environment-label">{principal.actor_id}</span>
+          <button type="button" onClick={() => void signOut()}>Sair</button>
+        </div>
       </header>
 
       <main id="main" className="main-content">
@@ -278,6 +353,10 @@ export default function App() {
         )}
         <DecisionSupportPanel />
         <ComparisonPanel />
+        <CompetencyPanel />
+        <ProjectPanel />
+        <ScenarioSetup onCreated={(createdScenarioId) => { setScenarioId(createdScenarioId); void loadMap(createdScenarioId); }} />
+        <OptimizationPanel scenarioId={scenarioId} />
       </main>
     </div>
   );

@@ -1,8 +1,115 @@
+from __future__ import annotations
+
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+class AuthenticationPayload(BaseModel):
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class PersonCreatePayload(BaseModel):
+    display_name: str = Field(min_length=1, max_length=200)
+
+
+class PersonCatalogResponse(BaseModel):
+    person_id: str
+    display_name: str
+
+
+class SkillCreatePayload(BaseModel):
+    skill_name: str = Field(min_length=1, max_length=150)
+    description: str | None = Field(default=None, max_length=1000)
+
+
+class SkillCatalogResponse(BaseModel):
+    skill_id: str
+    skill_name: str
+    description: str | None
+
+
+class ProjectCreatePayload(BaseModel):
+    project_name: str = Field(min_length=1, max_length=200)
+    horizon_start: date
+    horizon_end: date
+    load_unit: Literal["hours"] = "hours"
+
+    @field_validator("horizon_start", "horizon_end")
+    @classmethod
+    def require_first_of_month(cls, value: date) -> date:
+        if value.day != 1:
+            raise ValueError("Project horizon dates must be the first day of a month")
+        return value
+
+    @model_validator(mode="after")
+    def require_ordered_horizon(self) -> ProjectCreatePayload:
+        if self.horizon_start > self.horizon_end:
+            raise ValueError("Project horizon start must not be after its end")
+        if not self.project_name.strip():
+            raise ValueError("Project name is required")
+        return self
+
+
+class ProjectCatalogResponse(BaseModel):
+    project_id: str
+    project_name: str
+    horizon_start: date
+    horizon_end: date
+    load_unit: str
+
+
+class BaseScenarioParticipantPayload(BaseModel):
+    person_id: str = Field(min_length=1, max_length=36)
+    availability: dict[str, Decimal] = Field(min_length=1)
+
+    @field_validator("availability")
+    @classmethod
+    def validate_monthly_availability(cls, value: dict[str, Decimal]) -> dict[str, Decimal]:
+        for period, hours in value.items():
+            if len(period) != 7 or period[4] != "-" or not period[:4].isdigit() or not period[5:].isdigit():
+                raise ValueError("Availability keys must use YYYY-MM")
+            month = int(period[5:])
+            if not 1 <= month <= 12 or hours < 0:
+                raise ValueError("Availability month or hours are invalid")
+        return value
+
+
+class BaseScenarioCreatePayload(BaseModel):
+    scenario_name: str = Field(min_length=1, max_length=200)
+    participants: list[BaseScenarioParticipantPayload] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def require_unique_participants(self) -> BaseScenarioCreatePayload:
+        person_ids = [participant.person_id for participant in self.participants]
+        if len(person_ids) != len(set(person_ids)):
+            raise ValueError("Participants must be unique")
+        if not self.scenario_name.strip():
+            raise ValueError("Scenario name is required")
+        return self
+
+
+class BaseScenarioResponse(BaseModel):
+    scenario_id: str
+    snapshot_id: str
+    project_id: str
+    scenario_name: str
+    scenario_type: Literal["BASE"]
+
+
+class OptimizerSnapshotResponse(BaseModel):
+    snapshot_id: str
+    profiles: list[dict[str, object]]
+    demands: list[dict[str, object]]
+
+
+class AuthenticatedPrincipalResponse(BaseModel):
+    actor_id: str
+    can_view: bool
+    can_edit: bool
 
 
 class DemandPayload(BaseModel):

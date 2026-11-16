@@ -127,6 +127,7 @@ describe("comparison premises", () => {
     const user = userEvent.setup();
     stubFetch();
     render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Cálculo" }));
 
     const panel = await screen.findByRole("tabpanel", { name: "Cenários" });
     await within(panel).findAllByRole("option", { name: "Atlas · Q3" });
@@ -144,6 +145,7 @@ describe("comparison premises", () => {
     const user = userEvent.setup();
     stubFetch();
     render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Cálculo" }));
 
     await user.click(await screen.findByRole("tab", { name: "Alternativas" }));
     const panel = screen.getByRole("tabpanel", { name: "Alternativas" });

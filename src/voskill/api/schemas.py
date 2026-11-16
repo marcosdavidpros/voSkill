@@ -265,6 +265,11 @@ class OptimizationRunSummaryResponse(BaseModel):
     created_at: datetime
     scenario_name: str | None
     project_name: str | None
+    status: str | None = None
+    seed: int | None = None
+    population_size: int | None = None
+    generations: int | None = None
+    rejected_count: int = 0
     alternative_ids: list[str]
 
 

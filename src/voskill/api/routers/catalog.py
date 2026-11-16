@@ -52,3 +52,16 @@ def create_skill(
         return repository.create_skill(payload.skill_name, payload.description)
     except CatalogError as error:
         raise HTTPException(status_code=error.status_code, detail={"code": error.code}) from error
+
+
+@router.patch("/skills/{skill_id}", response_model=SkillCatalogResponse)
+def update_skill(
+    skill_id: str,
+    payload: SkillCreatePayload,
+    _actor_id: Annotated[str, Depends(get_actor_id)],
+    repository: Annotated[CatalogRepository, Depends(get_catalog_repository)],
+) -> dict[str, object]:
+    try:
+        return repository.update_skill(skill_id, payload.skill_name, payload.description)
+    except CatalogError as error:
+        raise HTTPException(status_code=error.status_code, detail={"code": error.code}) from error

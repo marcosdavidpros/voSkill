@@ -74,6 +74,7 @@ describe("metric availability", () => {
     render(<App />);
 
     await screen.findByRole("button", { name: "Carregar mapa" });
+    await user.click(screen.getByRole("button", { name: "Cálculo" }));
     const lookup = await screen.findByRole("region", { name: "Explicação da alternativa" });
     await within(lookup).findByRole("option", { name: /Atlas · Baseline · / });
     await user.selectOptions(within(lookup).getByRole("combobox", { name: "Execução" }), "RUN-001");

@@ -1,4 +1,5 @@
 import type { AlternativeComparison, ScenarioComparison } from "./api";
+import { Pager, usePagination } from "./Pagination";
 
 function displayValue(value: unknown): string {
   if (value === null || value === undefined) return "Não informado";
@@ -14,6 +15,15 @@ function displayMetric(metric: { status: string; value?: number; reason?: string
 }
 
 export function ScenarioComparisonResults({ comparison }: { comparison: ScenarioComparison }) {
+  const rows = comparison.periods.flatMap((period) => {
+    const assumptions = comparison.scenario_ids.map((scenarioId) => {
+      const value = period.assumptions[scenarioId];
+      return value && typeof value === "object" ? value as Record<string, unknown> : {};
+    });
+    const fields = [...new Set(assumptions.flatMap((value) => Object.keys(value)))].sort();
+    return fields.map((field) => ({ period: period.period, field, assumptions, changed: field in period.changed_values }));
+  });
+  const pages = usePagination(rows, undefined, comparison);
   return (
     <section className="comparison-results" aria-label="Comparação de cenários">
       <ul className="comparison-statuses">
@@ -46,33 +56,28 @@ export function ScenarioComparisonResults({ comparison }: { comparison: Scenario
             </tr>
           </thead>
           <tbody>
-            {comparison.periods.flatMap((period) => {
-              const assumptions = comparison.scenario_ids.map((scenarioId) => {
-                const value = period.assumptions[scenarioId];
-                return value && typeof value === "object" ? value as Record<string, unknown> : {};
-              });
-              const fields = [...new Set(assumptions.flatMap((value) => Object.keys(value)))].sort();
-              return fields.map((field) => {
-                const changed = field in period.changed_values;
-                return (
-                  <tr key={`${period.period}-${field}`}>
-                    <th scope="row">{period.period}</th>
-                    <td>{field.replaceAll("_", " ")}</td>
-                    <td>{displayValue(assumptions[0][field])}</td>
-                    <td>{displayValue(assumptions[1][field])}</td>
-                    <td>{changed ? "Alterada" : "Sem alteração"}</td>
-                  </tr>
-                );
-              });
-            })}
+            {pages.visible.map(({ period, field, assumptions, changed }) => (
+              <tr key={`${period}-${field}`}>
+                <th scope="row">{period}</th>
+                <td>{field.replaceAll("_", " ")}</td>
+                <td>{displayValue(assumptions[0][field])}</td>
+                <td>{displayValue(assumptions[1][field])}</td>
+                <td>{changed ? "Alterada" : "Sem alteração"}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
+      <Pager pagination={pages} label="premissas por período" />
     </section>
   );
 }
 
 export function AlternativeComparisonResults({ comparison }: { comparison: AlternativeComparison }) {
+  const rows = comparison.alternatives.flatMap((alternative) =>
+    Object.entries(alternative.objective_metrics).map(([name, metric]) => ({ alternative, name, metric })),
+  );
+  const pages = usePagination(rows, undefined, comparison);
   return (
     <section className="comparison-results" aria-label="Comparação de alternativas">
       <div
@@ -93,23 +98,22 @@ export function AlternativeComparisonResults({ comparison }: { comparison: Alter
             </tr>
           </thead>
           <tbody>
-            {comparison.alternatives.flatMap((alternative) =>
-              Object.entries(alternative.objective_metrics).map(([name, metric]) => {
-                const definition = comparison.metric_definitions[name];
-                return (
-                  <tr key={`${alternative.alternative_id}-${name}`}>
-                    <th scope="row">{alternative.alternative_id}</th>
-                    <td>{definition?.label ?? name.replaceAll("_", " ")}</td>
-                    <td>{displayMetric(metric)}</td>
-                    <td>{metric.status === "available" ? metric.unit ?? definition?.unit ?? "Unidade não informada" : "—"}</td>
-                    <td>{metric.status === "available" ? metric.source ?? definition?.source ?? "Fonte não informada" : "—"}</td>
-                  </tr>
-                );
-              }),
-            )}
+            {pages.visible.map(({ alternative, name, metric }) => {
+              const definition = comparison.metric_definitions[name];
+              return (
+                <tr key={`${alternative.alternative_id}-${name}`}>
+                  <th scope="row">{alternative.alternative_id}</th>
+                  <td>{definition?.label ?? name.replaceAll("_", " ")}</td>
+                  <td>{displayMetric(metric)}</td>
+                  <td>{metric.status === "available" ? metric.unit ?? definition?.unit ?? "Unidade não informada" : "—"}</td>
+                  <td>{metric.status === "available" ? metric.source ?? definition?.source ?? "Fonte não informada" : "—"}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
+      <Pager pagination={pages} label="métricas por alternativa" />
       <h3>Trade-off</h3>
       {comparison.trade_offs.length === 0 ? (
         <p>Nenhum trade-off identificado entre os objetivos.</p>

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import ProjectPanel from "./ProjectPanel";
@@ -30,9 +30,8 @@ it("loads project/skill catalogs and records a demand for the selected project",
   vi.stubGlobal("fetch", fetchMock);
   render(<ProjectPanel />);
 
-  await user.click(screen.getByRole("button", { name: "Carregar projetos e skills" }));
   expect(await screen.findByRole("option", { name: /Atlas/ })).toBeInTheDocument();
-  await user.selectOptions(screen.getByLabelText("Skill demandada"), "SKILL-1");
+  await user.selectOptions(await screen.findByLabelText("Skill demandada"), "SKILL-1");
   await user.clear(screen.getByLabelText("Período"));
   await user.type(screen.getByLabelText("Período"), "2026-11");
   await user.type(screen.getByLabelText("Carga"), "10");
@@ -68,7 +67,6 @@ it("records epic and title and groups tasks by epic with hour totals", async () 
   const fetchMock = stubDemandFetch([]);
   render(<ProjectPanel />);
 
-  await user.click(screen.getByRole("button", { name: "Carregar projetos e skills" }));
   await user.selectOptions(await screen.findByLabelText("Skill demandada"), "SKILL-1");
   await user.type(screen.getByLabelText("Épico ou história"), "Pagamentos");
   await user.type(screen.getByLabelText("Título da tarefa"), "Integração com fila");
@@ -88,7 +86,6 @@ it("edits an existing demand with PATCH and refreshes the row", async () => {
   const fetchMock = stubDemandFetch([{ demand_id: "D-001", period: "2026-07", load_amount: 480, title: "Integração", epic: "Pagamentos" }]);
   render(<ProjectPanel />);
 
-  await user.click(screen.getByRole("button", { name: "Carregar projetos e skills" }));
   await user.click(await screen.findByRole("button", { name: "Editar Integração 2026-07" }));
   expect(screen.getByRole("heading", { name: "Editar demanda mensal" })).toBeInTheDocument();
   const load = screen.getByLabelText("Carga");
@@ -110,7 +107,6 @@ it("deletes a demand only after confirmation", async () => {
   const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
   render(<ProjectPanel />);
 
-  await user.click(screen.getByRole("button", { name: "Carregar projetos e skills" }));
   const remove = await screen.findByRole("button", { name: "Excluir Integração 2026-07" });
   await user.click(remove);
   expect(fetchMock.mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(false);
@@ -136,6 +132,7 @@ it("creates a project with monthly horizon and selects it", async () => {
   });
   vi.stubGlobal("fetch", fetchMock);
   render(<ProjectPanel />);
+  await screen.findByLabelText("Projeto");
   await user.type(screen.getByLabelText("Nome do projeto"), "Atlas");
   await user.type(screen.getByLabelText("Início do horizonte"), "2026-01");
   await user.type(screen.getByLabelText("Fim do horizonte"), "2026-12");
@@ -164,7 +161,7 @@ it("loads the demand list when the selected project changes", async () => {
   vi.stubGlobal("fetch", fetchMock);
   render(<ProjectPanel />);
 
-  await user.click(screen.getByRole("button", { name: "Carregar projetos e skills" }));
+  await screen.findByRole("option", { name: /Orion/ });
   await user.selectOptions(screen.getByLabelText("Projeto"), "PRJ-002");
 
   expect(await screen.findByRole("row", { name: /SKILL-2 SKILL-2 5 2026-07 12/ })).toBeInTheDocument();
@@ -173,11 +170,13 @@ it("loads the demand list when the selected project changes", async () => {
 
 it("shows a duplicate project error without adding a selection", async () => {
   const user = userEvent.setup();
-  vi.stubGlobal("fetch", vi.fn(async () => ({
-    ok: false,
-    json: async () => ({ detail: { code: "PROJECT_ALREADY_EXISTS" } }),
-  })));
+  vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => (
+    init?.method === "POST"
+      ? { ok: false, json: async () => ({ detail: { code: "PROJECT_ALREADY_EXISTS" } }) }
+      : { ok: true, json: async () => [] }
+  )));
   render(<ProjectPanel />);
+  await screen.findByLabelText("Projeto");
 
   await user.type(screen.getByLabelText("Nome do projeto"), "Atlas");
   await user.type(screen.getByLabelText("Início do horizonte"), "2026-01");
@@ -206,8 +205,7 @@ it("shows a permission error and does not add a demand row for a viewer", async 
   vi.stubGlobal("fetch", fetchMock);
   render(<ProjectPanel />);
 
-  await user.click(screen.getByRole("button", { name: "Carregar projetos e skills" }));
-  await user.selectOptions(screen.getByLabelText("Skill demandada"), "SKILL-1");
+  await user.selectOptions(await screen.findByLabelText("Skill demandada"), "SKILL-1");
   await user.clear(screen.getByLabelText("Período"));
   await user.type(screen.getByLabelText("Período"), "2026-11");
   await user.type(screen.getByLabelText("Carga"), "10");
@@ -215,4 +213,127 @@ it("shows a permission error and does not add a demand row for a viewer", async 
 
   expect(await screen.findByRole("alert")).toHaveTextContent("Seu perfil pode consultar, mas não cadastrar");
   expect(screen.queryByRole("row", { name: /D-403/ })).not.toBeInTheDocument();
+});
+
+function stubCatalog() {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    const body = url === "/api/projects" ? [{ project_id: "PRJ-001", project_name: "Atlas", horizon_start: "2026-01-01", horizon_end: "2026-12-01", load_unit: "hours" }]
+      : url === "/api/skills" ? [{ skill_id: "SKILL-1", skill_name: "Python", description: null }] : [];
+    return { ok: true, status: 200, json: async () => body };
+  }));
+}
+
+it("shows only project creation and the project list in the projects part", async () => {
+  const user = userEvent.setup();
+  stubCatalog();
+  render(<ProjectPanel part="projects" />);
+
+  expect(screen.getByRole("heading", { name: "Projetos" })).toBeInTheDocument();
+  const list = await screen.findByRole("region", { name: "Projetos cadastrados" });
+  expect(within(list).getByRole("row", { name: /Atlas 2026-01 2026-12 horas/ })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Novo projeto" })).toBeInTheDocument();
+  expect(screen.queryByLabelText("Skill demandada")).not.toBeInTheDocument();
+});
+
+it("shows only the demand form and table in the demands part", async () => {
+  const user = userEvent.setup();
+  stubCatalog();
+  render(<ProjectPanel part="demands" />);
+
+  expect(screen.getByRole("heading", { name: "Demandas" })).toBeInTheDocument();
+  expect(await screen.findByLabelText("Skill demandada")).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Novo projeto" })).not.toBeInTheDocument();
+});
+it("reloads the catalog when shown again and keeps the selected project", async () => {
+  const user = userEvent.setup();
+  const projects = [
+    { project_id: "PRJ-001", project_name: "Atlas", horizon_start: "2026-01-01", horizon_end: "2026-12-01", load_unit: "hours" },
+    { project_id: "PRJ-002", project_name: "Orion", horizon_start: "2026-06-01", horizon_end: "2026-12-01", load_unit: "hours" },
+  ];
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    return { ok: true, status: 200, json: async () => url === "/api/projects" ? projects : url === "/api/skills" ? [] : [] };
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const { rerender } = render(<ProjectPanel part="demands" active />);
+
+  await screen.findByRole("option", { name: /Orion/ });
+  await user.selectOptions(screen.getByLabelText("Projeto"), "PRJ-002");
+  const projectCalls = () => fetchMock.mock.calls.filter(([url]) => String(url) === "/api/projects").length;
+  expect(projectCalls()).toBe(1);
+
+  projects.push({ project_id: "PRJ-003", project_name: "Vega", horizon_start: "2026-01-01", horizon_end: "2026-12-01", load_unit: "hours" });
+  rerender(<ProjectPanel part="demands" active={false} />);
+  rerender(<ProjectPanel part="demands" active />);
+
+  expect(await screen.findByRole("option", { name: /Vega/ })).toBeInTheDocument();
+  expect(projectCalls()).toBe(2);
+  expect(screen.getByLabelText("Projeto")).toHaveValue("PRJ-002");
+});
+
+it("edits an existing project name and horizon with PATCH and updates the list", async () => {
+  const user = userEvent.setup();
+  const atlas = { project_id: "PRJ-001", project_name: "Atlas", horizon_start: "2026-01-01", horizon_end: "2026-12-01", load_unit: "hours" };
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (init?.method === "PATCH") return { ok: true, status: 200, json: async () => ({ ...atlas, ...JSON.parse(String(init.body)) }) };
+    return { ok: true, status: 200, json: async () => url === "/api/projects" ? [atlas] : [] };
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<ProjectPanel part="projects" />);
+
+  await user.click(await screen.findByRole("button", { name: "Editar projeto Atlas" }));
+  expect(screen.getByRole("heading", { name: "Editar projeto" })).toBeInTheDocument();
+  expect(screen.getByLabelText("Nome do projeto")).toHaveValue("Atlas");
+  expect(screen.getByLabelText("Início do horizonte")).toHaveValue("2026-01");
+  expect(screen.getByLabelText("Fim do horizonte")).toHaveValue("2026-12");
+  await user.clear(screen.getByLabelText("Nome do projeto"));
+  await user.type(screen.getByLabelText("Nome do projeto"), "Atlas 2");
+  await user.clear(screen.getByLabelText("Fim do horizonte"));
+  await user.type(screen.getByLabelText("Fim do horizonte"), "2027-03");
+  await user.click(screen.getByRole("button", { name: "Salvar alterações" }));
+
+  const patchCall = fetchMock.mock.calls.find(([, init]) => init?.method === "PATCH");
+  expect(patchCall?.[0]).toBe("/api/projects/PRJ-001");
+  expect(JSON.parse(String(patchCall?.[1]?.body))).toEqual({
+    project_name: "Atlas 2", horizon_start: "2026-01-01", horizon_end: "2027-03-01", load_unit: "hours",
+  });
+  expect(await screen.findByText("Projeto Atlas 2 atualizado.")).toBeInTheDocument();
+  expect(screen.getByRole("row", { name: /Atlas 2 2026-01 2027-03 horas/ })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Novo projeto" })).toBeInTheDocument();
+});
+
+it("explains when a smaller horizon would leave demands outside the project", async () => {
+  const user = userEvent.setup();
+  const atlas = { project_id: "PRJ-001", project_name: "Atlas", horizon_start: "2026-01-01", horizon_end: "2026-12-01", load_unit: "hours" };
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => (
+    init?.method === "PATCH"
+      ? { ok: false, status: 409, json: async () => ({ detail: { code: "HORIZON_EXCLUDES_DEMANDS" } }) }
+      : { ok: true, status: 200, json: async () => String(input) === "/api/projects" ? [atlas] : [] }
+  )));
+  render(<ProjectPanel part="projects" />);
+
+  await user.click(await screen.findByRole("button", { name: "Editar projeto Atlas" }));
+  await user.clear(screen.getByLabelText("Fim do horizonte"));
+  await user.type(screen.getByLabelText("Fim do horizonte"), "2026-03");
+  await user.click(screen.getByRole("button", { name: "Salvar alterações" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("demandas fora do novo horizonte");
+  expect(screen.getByRole("row", { name: /Atlas 2026-01 2026-12 horas/ })).toBeInTheDocument();
+});
+
+it("cancels a project edit without saving", async () => {
+  const user = userEvent.setup();
+  const atlas = { project_id: "PRJ-001", project_name: "Atlas", horizon_start: "2026-01-01", horizon_end: "2026-12-01", load_unit: "hours" };
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => ({ ok: true, status: 200, json: async () => String(input) === "/api/projects" ? [atlas] : [] }));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<ProjectPanel part="projects" />);
+
+  await user.click(await screen.findByRole("button", { name: "Editar projeto Atlas" }));
+  await user.click(screen.getByRole("button", { name: "Cancelar edição" }));
+
+  expect(screen.getByRole("heading", { name: "Novo projeto" })).toBeInTheDocument();
+  expect(screen.getByLabelText("Nome do projeto")).toHaveValue("");
+  expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
 });

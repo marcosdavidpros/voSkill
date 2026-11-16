@@ -42,7 +42,8 @@ diagnóstico da API, `http://127.0.0.1:8000/health` deve responder `{"status":"o
 
 ## 2. Entrar
 
-1. Informe matrícula e senha corporativas no formulário **Entrar no voSkill**.
+1. Informe matrícula e senha corporativas no formulário **Entrar no voSkill** (tela
+   de login com a identidade visual Vivo, no mesmo padrão do Portal).
 2. O login valida a senha via LDAP e verifica usuário ativo, perfil ativo/não expirado
    e permissão da tela `VOSKILL` no Oracle do Portal.
 3. `PODE_VISUALIZAR=S` permite consultar. `PODE_EDITAR=S` permite cadastrar e alterar
@@ -51,11 +52,31 @@ diagnóstico da API, `http://127.0.0.1:8000/health` deve responder `{"status":"o
 4. A matrícula normalizada é usada como `actor_id` das operações. O cookie da sessão
    é assinado, `HttpOnly`, `SameSite=Lax` e temporário. Use **Sair** para encerrá-lo.
 
+### Menu principal
+
+Depois do login, a barra superior tem seis menus; cada um abre uma tela:
+
+| Menu | O que contém |
+| --- | --- |
+| **Mapa do cenário** | Seletor de cenário, cobertura, estados por skill, skills do cenário e **Risco por limiar configurado**. |
+| **Decisão operacional** | **Plano operacional da alternativa** (seção 6). |
+| **Cálculo** | **Otimização do cenário**, **Explicação da alternativa** e **Cenários e alternativas**. |
+| **Pessoas** | Cadastro de pessoas e as competências (skills) de cada uma. |
+| **Skills** | Catálogo de skills: lista e cadastro. |
+| **Projetos** | Três abas: **Projetos**, **Demandas** e **Cenários**. |
+
+As telas já visitadas mantêm o que você preencheu ao trocar de menu. As referências
+a seções nos passos abaixo dizem em qual menu cada uma está.
+
 ## 3. Cadastrar pessoas e skills
 
-1. Na seção **Competências por pessoa**, selecione **Carregar pessoas e skills**.
-2. Se o catálogo estiver vazio, use **Nova pessoa** e **Cadastrar pessoa**; depois
-   cadastre uma skill em **Nova skill**. O formulário seleciona o registro recém-criado.
+1. Abra o menu **Pessoas**. A lista de pessoas e skills carrega sozinha ao abrir a tela;
+   se falhar, aparece o erro e o botão **Tentar carregar novamente**.
+2. Se o catálogo estiver vazio, use **Nova pessoa** e **Cadastrar pessoa**; a pessoa
+   aparece na lista na hora. As skills são cadastradas no menu **Skills**, em **Nova
+   skill**; ao voltar ao menu **Pessoas**, a lista é atualizada sozinha. Para corrigir
+   o nome ou a descrição de uma skill, use **Editar** na tabela do menu **Skills**, altere
+   os campos e selecione **Salvar alterações** (o nome não pode repetir o de outra skill).
 3. Se já houver registros, escolha a pessoa no seletor e use **Consultar competências**.
 4. Em **Cadastrar competência**, escolha uma skill existente, nível de 1 a 5, informe
    evidência verificável e data da revisão. Se a pessoa já tiver essa skill, use
@@ -65,8 +86,12 @@ diagnóstico da API, `http://127.0.0.1:8000/health` deve responder `{"status":"o
 
 ## 4. Criar projeto e demanda
 
-1. Em **Projetos e demandas**, crie um projeto, por exemplo `Atlas`, com horizonte
-   mensal começando no primeiro dia do mês. Exemplo: `2026-11` a `2027-10`.
+1. No menu **Projetos**, aba **Projetos**, crie um projeto, por exemplo `Atlas`, com horizonte
+   mensal começando no primeiro dia do mês. Exemplo: `2026-11` a `2027-10`. A lista de
+   projetos cadastrados aparece sozinha ao abrir a aba. Para corrigir o nome ou o
+   horizonte de um projeto existente, use **Editar** na linha da lista, altere os
+   campos e selecione **Salvar alterações**. O horizonte não pode deixar demandas
+   fora do período; ajuste ou exclua essas demandas antes de reduzi-lo.
 2. A unidade do MVP é `hours`; ela não é configurável pela tela.
 3. Escolha uma skill existente, nível exigido de 1 a 5, período dentro do horizonte
    e carga maior ou igual a zero. Opcionalmente informe o **Épico ou história** (o
@@ -106,7 +131,8 @@ Exemplo fictício de demanda:
 
 ## 5. Informar disponibilidade e montar cenário-base
 
-1. Em **Disponibilidade e cenário**, escolha **Carregar projetos e pessoas**.
+1. No menu **Projetos**, aba **Cenários** (seção **Disponibilidade e cenário**), projetos
+   e pessoas carregam sozinhos ao abrir a aba.
 2. Selecione `Atlas`. A tela mostra a tabela **Demandas do projeto** (skill com nome,
    nível exigido, mês e carga) e a lista de participantes ativos. Essas demandas são
    o que o cenário precisa cobrir; a disponibilidade informada é comparada a elas.
@@ -122,7 +148,7 @@ Exemplo fictício de demanda:
 
 ### Editar um cenário existente
 
-1. Em **Disponibilidade e cenário**, selecione o projeto e escolha o cenário em
+1. No menu **Projetos**, aba **Cenários**, selecione o projeto e escolha o cenário em
    **Cenário**. O formulário é preenchido com nome, pessoas e horas por mês.
 2. Altere nome, pessoas ou horas e selecione **Salvar alterações**.
 3. A edição grava um novo snapshot imutável e mantém o anterior para auditoria. O
@@ -139,7 +165,7 @@ mapa, mas não transformam a hipótese em competência confirmada.
 
 ## 6. Executar a otimização
 
-1. Em **Cenário a calcular**, na seção **Otimização do cenário**, escolha o cenário
+1. No menu **Cálculo**, em **Cenário a calcular**, na seção **Otimização do cenário**, escolha o cenário
    pelo nome (formato `Projeto · Cenário`). O mesmo cenário pode ser trocado no
    seletor do topo da página, que carrega o mapa de cobertura.
 2. Escolha parâmetros. Para reproduzir o exemplo use seed 42, população 20 e
@@ -152,9 +178,17 @@ mapa, mas não transformam a hipótese em competência confirmada.
    alternativas mostram lacuna de competência (horas ponderadas pelo déficit de nível)
    e pico de utilização (maior carga dividida pela disponibilidade; 1,0 é 100%)
    separadamente. Violações rejeitadas aparecem em texto.
+   Logo abaixo, **Cálculos realizados neste cenário** lista as execuções salvas do
+   cenário escolhido (data, resultado, alternativas viáveis e rejeitadas, seed,
+   população, gerações e `RUN-...`), da mais recente para a mais antiga. Use
+   **Ver detalhe** na linha para abrir abaixo da tabela todas as alternativas daquele
+   cálculo (por exemplo, as 51 ou 60 alternativas), com lacuna, pico de utilização e
+   restrições rejeitadas.
+   Todas as tabelas do sistema mostram 10 linhas por página; quando há mais, use
+   **Anterior** e **Próxima** abaixo da tabela.
 5. Se não houver alternativa viável, aumente a disponibilidade, inclua mais pessoas ou
    reduza demandas e salve o cenário. Nenhuma alocação é aplicada automaticamente.
-6. Para decidir, use **Plano operacional da alternativa** (abre na execução mais
+6. Para decidir, abra o menu **Decisão operacional** (**Plano operacional da alternativa**, que abre na execução mais
    recente; troque em **Execução**):
    - **Tarefas que ninguém do cenário consegue cumprir:** demandas cujo nível exigido
      ninguém no cenário tem, qualquer que seja a alternativa.
@@ -176,7 +210,7 @@ mapa, mas não transformam a hipótese em competência confirmada.
 8. Para comparar, use **Cenários e alternativas**. Na aba **Alternativas**, escolha a
    **Execução** e duas alternativas dela. Na aba **Cenários**, escolha **Cenário base**
    e **Cenário para comparar**. Não há ranking agregado.
-9. Em **Risco por limiar configurado**, escolha a **Skill crítica** e o número mínimo
+9. No menu **Mapa do cenário**, em **Risco por limiar configurado**, escolha a **Skill crítica** e o número mínimo
    de pessoas confirmadas, depois **Salvar limiar**. O valor fica gravado por projeto
    e skill em `VSK_CRITICAL_SKILL_THRESHOLDS`; o painel lista as skills abaixo do
    limiar com as pessoas e evidências.

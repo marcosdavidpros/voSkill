@@ -140,11 +140,20 @@ export type OptimizationRunSummary = {
   created_at: string;
   scenario_name: string | null;
   project_name: string | null;
+  status?: string | null;
+  seed?: number | null;
+  population_size?: number | null;
+  generations?: number | null;
+  rejected_count?: number;
   alternative_ids: string[];
 };
 
 export function fetchOptimizationRuns(): Promise<OptimizationRunSummary[]> {
   return catalogRequest("optimization-runs", "GET");
+}
+
+export function fetchOptimizationRun(runId: string): Promise<OptimizationRun> {
+  return catalogRequest(`optimization-runs/${encodeURIComponent(runId)}`, "GET");
 }
 
 export type OperationalAssignment = {
@@ -246,6 +255,10 @@ export function createSkill(skillName: string, description?: string): Promise<Ca
   return catalogRequest("skills", "POST", { skill_name: skillName, description });
 }
 
+export function updateSkill(skillId: string, skillName: string, description?: string): Promise<CatalogSkill> {
+  return catalogRequest(`skills/${encodeURIComponent(skillId)}`, "PATCH", { skill_name: skillName, description });
+}
+
 export function fetchProjects(): Promise<CatalogProject[]> {
   return catalogRequest("projects", "GET");
 }
@@ -257,6 +270,15 @@ export function createProject(project: {
   load_unit: "hours";
 }): Promise<CatalogProject> {
   return catalogRequest("projects", "POST", project);
+}
+
+export function updateProject(projectId: string, project: {
+  project_name: string;
+  horizon_start: string;
+  horizon_end: string;
+  load_unit: "hours";
+}): Promise<CatalogProject> {
+  return catalogRequest(`projects/${encodeURIComponent(projectId)}`, "PATCH", project);
 }
 
 export function fetchProjectDemands(projectId: string): Promise<ProjectDemand[]> {

@@ -23,9 +23,10 @@ import DecisionSupportPanel from "./DecisionSupportPanel";
 import LoginPanel from "./LoginPanel";
 import OperationalPlanPanel from "./OperationalPlanPanel";
 import OptimizationPanel from "./OptimizationPanel";
-import ProjectPanel from "./ProjectPanel";
+import { Pager, usePagination } from "./Pagination";
+import ProjectsHub from "./ProjectsHub";
 import RiskPanel from "./RiskPanel";
-import ScenarioSetup from "./ScenarioSetup";
+import SkillsPanel from "./SkillsPanel";
 
 const Plot = lazy(() => import("react-plotly.js"));
 
@@ -37,6 +38,17 @@ const statusLabels = {
 
 const statusOrder = ["confirmed", "inferred", "uncovered"] as const;
 
+type View = "mapa" | "decisao" | "calculo" | "pessoas" | "skills" | "projetos";
+
+const views: { id: View; label: string }[] = [
+  { id: "mapa", label: "Mapa do cenário" },
+  { id: "decisao", label: "Decisão operacional" },
+  { id: "calculo", label: "Cálculo" },
+  { id: "pessoas", label: "Pessoas" },
+  { id: "skills", label: "Skills" },
+  { id: "projetos", label: "Projetos" },
+];
+
 export default function App() {
   const [principal, setPrincipal] = useState<AuthenticatedPrincipal | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -46,6 +58,8 @@ export default function App() {
   const [skillNames, setSkillNames] = useState<Record<string, string>>({});
   const [runs, setRuns] = useState<OptimizationRunSummary[]>([]);
   const [personNames, setPersonNames] = useState<Record<string, string>>({});
+  const [view, setView] = useState<View>("mapa");
+  const [visited, setVisited] = useState<ReadonlySet<View>>(new Set<View>(["mapa"]));
   const [competencyMap, setCompetencyMap] = useState<CompetencyMap | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -53,7 +67,7 @@ export default function App() {
   const [riskPanelError, setRiskPanelError] = useState<string | null>(null);
   const [riskSaving, setRiskSaving] = useState(false);
   const [riskSavedMessage, setRiskSavedMessage] = useState<string | null>(null);
-
+  const skillPages = usePagination(competencyMap?.skills ?? [], undefined, competencyMap?.scenario_id);
   async function loadMap(requestedScenarioId: string) {
     setLoading(true);
     setError(null);
@@ -164,6 +178,11 @@ export default function App() {
       ? "Crie um cenário-base abaixo para consultar a cobertura"
       : "Selecione um cenário para consultar a cobertura";
 
+  function goTo(next: View) {
+    setView(next);
+    setVisited((current) => new Set([...current, next]));
+  }
+
   function submitScenario(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void loadMap(scenarioId.trim());
@@ -175,15 +194,9 @@ export default function App() {
 
   if (!principal?.can_view) {
     return (
-      <div className="app-shell">
-        <header className="topbar">
-          <a className="wordmark" href="#main" aria-label="voSkill, ir ao conteúdo">
-            <span className="wordmark-mark" aria-hidden="true">v</span><span>voSkill</span>
-          </a>
-          <span className="topbar-section">Planejamento de competências</span>
-        </header>
-        <main id="main" className="main-content"><LoginPanel error={authError} onLogin={signIn} /></main>
-      </div>
+      <main id="main" className="login-screen">
+        <LoginPanel error={authError} onLogin={signIn} />
+      </main>
     );
   }
 
@@ -191,10 +204,14 @@ export default function App() {
     <div className="app-shell">
       <header className="topbar">
         <a className="wordmark" href="#main" aria-label="voSkill, ir ao conteúdo">
-          <span className="wordmark-mark" aria-hidden="true">v</span>
+          <img className="wordmark-logo" src="/images/vivo-logo-branco.png" alt="" />
           <span>voSkill</span>
         </a>
-        <span className="topbar-section">Planejamento de competências</span>
+        <nav className="main-nav" aria-label="Menu principal">
+          {views.map((item) => (
+            <button key={item.id} type="button" aria-current={view === item.id ? "page" : undefined} onClick={() => goTo(item.id)}>{item.label}</button>
+          ))}
+        </nav>
         <div className="account-actions">
           <span className="environment-label">{principal.actor_id}</span>
           <button type="button" onClick={() => void signOut()}>Sair</button>
@@ -202,6 +219,7 @@ export default function App() {
       </header>
 
       <main id="main" className="main-content">
+        {view === "mapa" && <>
         <div className="page-heading">
           <div>
             <p className="eyebrow">MAPA DO CENÁRIO</p>
@@ -332,7 +350,7 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {competencyMap.skills.map((skill) => (
+                    {skillPages.visible.map((skill) => (
                       <tr key={skill.skill_id}>
                         <th scope="row">{skill.holders.find((holder) => holder.skill_name)?.skill_name ?? skillNames[skill.skill_id] ?? skill.skill_id}</th>
                         <td>
@@ -377,6 +395,7 @@ export default function App() {
                   </tbody>
                 </table>
               </div>
+              <Pager pagination={skillPages} label="skills do cenário" />
             </section>
             <RiskPanel
               key={competencyMap.scenario_id}
@@ -390,13 +409,27 @@ export default function App() {
             />
           </>
         )}
-        <OperationalPlanPanel runs={runs} skillNames={skillNames} personNames={personNames} />
-        <DecisionSupportPanel runs={runs} />
-        <ComparisonPanel scenarios={scenarios} runs={runs} />
-        <CompetencyPanel />
-        <ProjectPanel />
-        <ScenarioSetup onCreated={(createdScenarioId) => { void refreshScenarios(createdScenarioId); }} />
-        <OptimizationPanel scenarioId={scenarioId} scenarios={scenarios} onScenarioChange={(id) => { setScenarioId(id); void loadMap(id); }} onRunCreated={() => void refreshRuns()} />
+        </>}
+
+        <div hidden={view !== "decisao"}>
+          {visited.has("decisao") && <OperationalPlanPanel runs={runs} skillNames={skillNames} personNames={personNames} />}
+        </div>
+        <div hidden={view !== "calculo"}>
+          {visited.has("calculo") && <>
+            <OptimizationPanel scenarioId={scenarioId} scenarios={scenarios} runs={runs} onScenarioChange={(id) => { setScenarioId(id); void loadMap(id); }} onRunCreated={() => void refreshRuns()} />
+            <DecisionSupportPanel runs={runs} />
+            <ComparisonPanel scenarios={scenarios} runs={runs} />
+          </>}
+        </div>
+        <div hidden={view !== "pessoas"}>
+          {visited.has("pessoas") && <CompetencyPanel peopleOnly active={view === "pessoas"} />}
+        </div>
+        <div hidden={view !== "skills"}>
+          {visited.has("skills") && <SkillsPanel />}
+        </div>
+        <div hidden={view !== "projetos"}>
+          {visited.has("projetos") && <ProjectsHub active={view === "projetos"} onScenarioCreated={(createdScenarioId) => { void refreshScenarios(createdScenarioId); }} />}
+        </div>
       </main>
     </div>
   );

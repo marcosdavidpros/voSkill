@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 import {
   createProject,
@@ -8,11 +8,13 @@ import {
   fetchProjects,
   fetchSkills,
   updateProjectDemand,
+  updateProject,
   type CatalogProject,
   type CatalogSkill,
   type DemandInput,
   type ProjectDemand,
 } from "./api";
+import { Pager, usePagination } from "./Pagination";
 
 function messageFor(error: unknown): string {
   const code = error instanceof Error ? error.message : "Erro de conexão";
@@ -25,6 +27,8 @@ function messageFor(error: unknown): string {
     UNKNOWN_SKILL: "Skill não encontrada no catálogo.",
     PERIOD_OUTSIDE_HORIZON: "O período informado está fora do horizonte do projeto.",
     DEMAND_NOT_FOUND: "A demanda não existe mais; atualize a lista.",
+    PROJECT_NOT_FOUND: "O projeto não existe mais; atualize a lista.",
+    HORIZON_EXCLUDES_DEMANDS: "Há demandas fora do novo horizonte. Ajuste ou exclua essas demandas antes de reduzir o horizonte.",
   };
   return messages[code] ?? code;
 }
@@ -46,7 +50,9 @@ function groupByEpic(demands: ProjectDemand[]) {
     }));
 }
 
-export default function ProjectPanel() {
+export default function ProjectPanel({ part, active = true }: { part?: "projects" | "demands"; active?: boolean }) {
+  const showProjects = !part || part === "projects";
+  const showDemands = !part || part === "demands";
   const [projects, setProjects] = useState<CatalogProject[]>([]);
   const [skills, setSkills] = useState<CatalogSkill[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
@@ -54,6 +60,7 @@ export default function ProjectPanel() {
   const [projectName, setProjectName] = useState("");
   const [horizonStart, setHorizonStart] = useState("");
   const [horizonEnd, setHorizonEnd] = useState("");
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [skillId, setSkillId] = useState("");
   const [level, setLevel] = useState("3");
   const [period, setPeriod] = useState("");
@@ -65,19 +72,24 @@ export default function ProjectPanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const projectPages = usePagination(projects);
+  const demandRows = groupByEpic(demands).flatMap((group) => group.items.map((demand) => ({ demand, group })));
+  const demandPages = usePagination(demandRows);
 
   async function loadCatalogs() {
     setBusy(true);
     setError(null);
     try {
       const [nextProjects, nextSkills] = await Promise.all([fetchProjects(), fetchSkills()]);
+      if (!Array.isArray(nextProjects) || !Array.isArray(nextSkills)) throw new Error("INVALID_CATALOG_RESPONSE");
       setProjects(nextProjects);
       setSkills(nextSkills);
       setLoaded(true);
-      if (nextProjects.length) {
-        setSelectedProjectId(nextProjects[0].project_id);
-        setPeriod(nextProjects[0].horizon_start.slice(0, 7));
-        setDemands(await fetchProjectDemands(nextProjects[0].project_id));
+      const current = nextProjects.find((item) => item.project_id === selectedProjectId) ?? nextProjects[0];
+      if (current) {
+        setSelectedProjectId(current.project_id);
+        if (current.project_id !== selectedProjectId) setPeriod(current.horizon_start.slice(0, 7));
+        setDemands(await fetchProjectDemands(current.project_id));
       }
     } catch (caught) {
       setError(messageFor(caught));
@@ -85,6 +97,10 @@ export default function ProjectPanel() {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (active) void loadCatalogs();
+  }, [active]);
 
   async function selectProject(projectId: string) {
     setSelectedProjectId(projectId);
@@ -104,18 +120,42 @@ export default function ProjectPanel() {
     }
   }
 
+  function cancelProjectEdit() {
+    setEditingProjectId(null);
+    setProjectName("");
+    setHorizonStart("");
+    setHorizonEnd("");
+  }
+
+  function startEditingProject(project: CatalogProject) {
+    setEditingProjectId(project.project_id);
+    setProjectName(project.project_name);
+    setHorizonStart(project.horizon_start.slice(0, 7));
+    setHorizonEnd(project.horizon_end.slice(0, 7));
+    setMessage(null);
+    setError(null);
+  }
+
   async function submitProject(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     setError(null);
     setMessage(null);
     try {
-      const project = await createProject({
+      const input = {
         project_name: projectName.trim(),
         horizon_start: `${horizonStart}-01`,
         horizon_end: `${horizonEnd}-01`,
-        load_unit: "hours",
-      });
+        load_unit: "hours" as const,
+      };
+      if (editingProjectId) {
+        const updated = await updateProject(editingProjectId, input);
+        setProjects((current) => current.map((item) => item.project_id === updated.project_id ? updated : item));
+        setMessage(`Projeto ${updated.project_name} atualizado.`);
+        cancelProjectEdit();
+        return;
+      }
+      const project = await createProject(input);
       const availableSkills = loaded ? skills : await fetchSkills();
       setSkills(availableSkills);
       setLoaded(true);
@@ -210,18 +250,26 @@ export default function ProjectPanel() {
 
   return (
     <section className="project-section" aria-labelledby="project-heading">
-      <div className="section-heading"><div><p className="eyebrow">PLANEJAMENTO</p><h2 id="project-heading">Projetos e demandas</h2></div></div>
-      <button type="button" disabled={busy} onClick={() => void loadCatalogs()}>{busy ? "Carregando…" : loaded ? "Atualizar projetos e skills" : "Carregar projetos e skills"}</button>
+      <div className="section-heading"><div><p className="eyebrow">PLANEJAMENTO</p><h2 id="project-heading">{part === "projects" ? "Projetos" : part === "demands" ? "Demandas" : "Projetos e demandas"}</h2></div></div>
+      {!loaded && (busy ? <p role="status">Carregando projetos e skills…</p> : <button type="button" onClick={() => void loadCatalogs()}>Tentar carregar novamente</button>)}
       {error && <p className="project-error" role="alert">{error}</p>}
       {message && <p role="status">{message}</p>}
-      <form className="project-form" onSubmit={submitProject}>
-        <h3>Novo projeto</h3>
+      {showProjects && <form className="project-form" onSubmit={submitProject}>
+        <h3>{editingProjectId ? "Editar projeto" : "Novo projeto"}</h3>
         <label>Nome do projeto<input value={projectName} onChange={(event) => setProjectName(event.target.value)} maxLength={200} required disabled={busy} /></label>
         <label>Início do horizonte<input type="month" value={horizonStart} onChange={(event) => setHorizonStart(event.target.value)} required disabled={busy} /></label>
         <label>Fim do horizonte<input type="month" value={horizonEnd} onChange={(event) => setHorizonEnd(event.target.value)} required disabled={busy} /></label>
-        <button type="submit" disabled={busy || !projectName.trim() || !horizonStart || !horizonEnd}>Criar projeto</button>
-      </form>
-      {loaded && <>
+        <button type="submit" disabled={busy || !projectName.trim() || !horizonStart || !horizonEnd}>{editingProjectId ? "Salvar alterações" : "Criar projeto"}</button>
+        {editingProjectId && <button type="button" disabled={busy} onClick={cancelProjectEdit}>Cancelar edição</button>}
+      </form>}
+      {part === "projects" && loaded && <div className="table-scroll" role="region" aria-label="Projetos cadastrados" tabIndex={0}>
+        <table><caption className="visually-hidden">Projetos cadastrados e seus horizontes</caption><thead><tr><th scope="col">Projeto</th><th scope="col">Início</th><th scope="col">Fim</th><th scope="col">Unidade</th><th scope="col">Ação</th></tr></thead><tbody>
+          {projectPages.visible.map((project) => <tr key={project.project_id}><th scope="row">{project.project_name}</th><td>{project.horizon_start.slice(0, 7)}</td><td>{project.horizon_end.slice(0, 7)}</td><td>horas</td><td><button type="button" disabled={busy} onClick={() => startEditingProject(project)} aria-label={`Editar projeto ${project.project_name}`}>Editar</button></td></tr>)}
+          {projects.length === 0 && <tr><td colSpan={5}>Nenhum projeto cadastrado.</td></tr>}
+        </tbody></table>
+      </div>}
+      {part === "projects" && loaded && <Pager pagination={projectPages} label="projetos" />}
+      {showDemands && loaded && <>
         <label className="project-select-label">Projeto<select value={selectedProjectId} onChange={(event) => void selectProject(event.target.value)} disabled={busy}><option value="">Selecione um projeto</option>{projects.map((project) => <option key={project.project_id} value={project.project_id}>{project.project_name} ({project.horizon_start.slice(0, 7)} a {project.horizon_end.slice(0, 7)})</option>)}</select></label>
         {selectedProjectId && <>
           <form className="project-form" onSubmit={submitDemand}>
@@ -239,19 +287,21 @@ export default function ProjectPanel() {
           </form>
           <div className="table-scroll" role="region" aria-label="Demandas do projeto" tabIndex={0}>
             <table><caption className="visually-hidden">Demandas cadastradas do projeto, agrupadas por épico</caption><thead><tr><th scope="col">Tarefa</th><th scope="col">Skill</th><th scope="col">Nível</th><th scope="col">Período</th><th scope="col">Carga (h)</th><th scope="col">Ações</th></tr></thead><tbody>
-              {groupByEpic(demands).map((group) => <Fragment key={group.epic}>
-                <tr className="epic-row"><th scope="rowgroup" colSpan={6}>{group.epic} · {group.items.length} {group.items.length === 1 ? "tarefa" : "tarefas"} · {group.hours} h</th></tr>
-                {group.items.map((demand) => {
-                  const skillName = skills.find((skill) => skill.skill_id === demand.skill_id)?.skill_name ?? demand.skill_id;
-                  return <tr key={demand.demand_id}><th scope="row">{demand.title || skillName}</th><td>{skillName}</td><td>{demand.proficiency_level}</td><td>{demand.period}</td><td>{demand.load_amount}</td><td>
+              {demandPages.visible.map(({ demand, group }, index) => {
+                const skillName = skills.find((skill) => skill.skill_id === demand.skill_id)?.skill_name ?? demand.skill_id;
+                const startsGroup = index === 0 || demandPages.visible[index - 1].group.epic !== group.epic;
+                return <Fragment key={demand.demand_id}>
+                  {startsGroup && <tr className="epic-row"><th scope="rowgroup" colSpan={6}>{group.epic} · {group.items.length} {group.items.length === 1 ? "tarefa" : "tarefas"} · {group.hours} h</th></tr>}
+                  <tr><th scope="row">{demand.title || skillName}</th><td>{skillName}</td><td>{demand.proficiency_level}</td><td>{demand.period}</td><td>{demand.load_amount}</td><td>
                     <button type="button" disabled={busy} onClick={() => startEditing(demand)} aria-label={`Editar ${demand.title || skillName} ${demand.period}`}>Editar</button>{" "}
                     <button type="button" disabled={busy} onClick={() => void removeDemand(demand)} aria-label={`Excluir ${demand.title || skillName} ${demand.period}`}>Excluir</button>
-                  </td></tr>;
-                })}
-              </Fragment>)}
+                  </td></tr>
+                </Fragment>;
+              })}
               {demands.length === 0 && <tr><td colSpan={6}>Nenhuma demanda cadastrada.</td></tr>}
             </tbody></table>
           </div>
+          <Pager pagination={demandPages} label="demandas" />
         </>}
       </>}
     </section>

@@ -35,3 +35,25 @@ def create_project(
         if error.field:
             detail["fieldErrors"] = {error.field: error.code}
         raise HTTPException(status_code=error.status_code, detail=detail) from error
+
+
+@router.patch("/projects/{project_id}", response_model=ProjectCatalogResponse)
+def update_project(
+    project_id: str,
+    payload: ProjectCreatePayload,
+    _actor_id: Annotated[str, Depends(get_actor_id)],
+    repository: Annotated[ProjectRepository, Depends(get_project_repository)],
+) -> dict[str, object]:
+    try:
+        return repository.update_project(
+            project_id=project_id,
+            project_name=payload.project_name,
+            horizon_start=payload.horizon_start,
+            horizon_end=payload.horizon_end,
+            load_unit=payload.load_unit,
+        )
+    except ProjectError as error:
+        detail = {"code": error.code}
+        if error.field:
+            detail["fieldErrors"] = {error.field: error.code}
+        raise HTTPException(status_code=error.status_code, detail=detail) from error

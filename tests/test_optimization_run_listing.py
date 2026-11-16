@@ -10,7 +10,13 @@ from voskill.optimization_runs import OptimizationRunRepository
 CREATED_AT = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)
 RESULT = {
     "feasible_alternatives": [{"alternative_id": "A-001"}, {"alternative_id": "A-002"}],
-    "run_metadata": {"snapshot_id": "SNP-1"},
+    "status": "feasible",
+    "rejected_alternatives": [{"alternative_id": "R-1"}],
+    "run_metadata": {
+        "snapshot_id": "SNP-1",
+        "seed": 42,
+        "configuration": {"population_size": 20, "generations": 12},
+    },
 }
 
 
@@ -60,6 +66,11 @@ def test_list_runs_returns_scenario_names_and_alternative_ids() -> None:
             "created_at": CREATED_AT,
             "scenario_name": "Baseline",
             "project_name": "Atlas",
+            "status": "feasible",
+            "seed": 42,
+            "population_size": 20,
+            "generations": 12,
+            "rejected_count": 1,
             "alternative_ids": ["A-001", "A-002"],
         },
         {
@@ -67,6 +78,11 @@ def test_list_runs_returns_scenario_names_and_alternative_ids() -> None:
             "created_at": CREATED_AT,
             "scenario_name": None,
             "project_name": None,
+            "status": None,
+            "seed": None,
+            "population_size": None,
+            "generations": None,
+            "rejected_count": 0,
             "alternative_ids": [],
         },
     ]

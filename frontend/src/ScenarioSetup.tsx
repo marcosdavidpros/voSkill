@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   createBaseScenario,
@@ -14,6 +14,7 @@ import {
   type ProjectDemand,
   type ScenarioOption,
 } from "./api";
+import { Pager, usePagination } from "./Pagination";
 
 function explain(error: unknown): string {
   const code = error instanceof Error ? error.message : "Erro de conexão";
@@ -32,9 +33,10 @@ function explain(error: unknown): string {
 
 type ScenarioSetupProps = {
   onCreated: (scenarioId: string) => void;
+  active?: boolean;
 };
 
-export default function ScenarioSetup({ onCreated }: ScenarioSetupProps) {
+export default function ScenarioSetup({ onCreated, active = true }: ScenarioSetupProps) {
   const [projects, setProjects] = useState<CatalogProject[]>([]);
   const [people, setPeople] = useState<CatalogPerson[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
@@ -49,6 +51,7 @@ export default function ScenarioSetup({ onCreated }: ScenarioSetupProps) {
   const [created, setCreated] = useState<{ scenarioName: string; updated: boolean } | null>(null);
   const [scenarios, setScenarios] = useState<ScenarioOption[]>([]);
   const [editingId, setEditingId] = useState("");
+  const demandPages = usePagination(demands);
   const demandPeriods = [...new Set(demands.map((demand) => demand.period))].sort();
   const projectScenarios = scenarios.filter((scenario) => scenario.project_id === selectedProjectId && scenario.scenario_type === "BASE");
 
@@ -62,6 +65,7 @@ export default function ScenarioSetup({ onCreated }: ScenarioSetupProps) {
     setError(null);
     try {
       const [nextProjects, nextPeople, nextSkills] = await Promise.all([fetchProjects(), fetchPeople(), fetchSkills().catch(() => [])]);
+      if (!Array.isArray(nextProjects) || !Array.isArray(nextPeople)) throw new Error("INVALID_CATALOG_RESPONSE");
       await reloadScenarios();
       setProjects(nextProjects);
       setPeople(nextPeople);
@@ -73,6 +77,10 @@ export default function ScenarioSetup({ onCreated }: ScenarioSetupProps) {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (active) void loadCatalogs();
+  }, [active]);
 
   async function selectProject(projectId: string) {
     setSelectedProjectId(projectId);
@@ -163,7 +171,7 @@ export default function ScenarioSetup({ onCreated }: ScenarioSetupProps) {
   return (
     <section className="scenario-setup" aria-labelledby="scenario-setup-heading">
       <div className="section-heading"><div><p className="eyebrow">CENÁRIO-BASE</p><h2 id="scenario-setup-heading">Disponibilidade e cenário</h2></div></div>
-      <button type="button" disabled={busy} onClick={() => void loadCatalogs()}>{busy ? "Carregando…" : loaded ? "Atualizar projetos e pessoas" : "Carregar projetos e pessoas"}</button>
+      {!loaded && (busy ? <p role="status">Carregando projetos e pessoas…</p> : <button type="button" onClick={() => void loadCatalogs()}>Tentar carregar novamente</button>)}
       {error && <p role="alert" className="scenario-setup-error">{error}</p>}
       {created && <p role="status">Cenário "{created.scenarioName}" {created.updated ? "atualizado" : "salvo"}. Ele já está disponível nos seletores de cenário.</p>}
       {loaded && <>
@@ -178,7 +186,8 @@ export default function ScenarioSetup({ onCreated }: ScenarioSetupProps) {
             <h3>Demandas do projeto</h3>
             <p>Horas que o projeto precisa de cada skill, por mês. O cenário-base compara essas demandas com a carga horária das pessoas selecionadas abaixo.</p>
             <table><thead><tr><th>Épico / tarefa</th><th>Skill</th><th>Nível exigido</th><th>Mês</th><th>Carga</th></tr></thead>
-              <tbody>{demands.map((demand) => <tr key={demand.demand_id}><td>{[demand.epic, demand.title].filter(Boolean).join(" · ") || "—"}</td><td>{skillNames[demand.skill_id] ? `${skillNames[demand.skill_id]} (${demand.skill_id})` : demand.skill_id}</td><td>{demand.proficiency_level}</td><td>{demand.period}</td><td>{demand.load_amount} {demand.load_unit === "hours" ? "h" : demand.load_unit}</td></tr>)}</tbody></table>
+              <tbody>{demandPages.visible.map((demand) => <tr key={demand.demand_id}><td>{[demand.epic, demand.title].filter(Boolean).join(" · ") || "—"}</td><td>{skillNames[demand.skill_id] ? `${skillNames[demand.skill_id]} (${demand.skill_id})` : demand.skill_id}</td><td>{demand.proficiency_level}</td><td>{demand.period}</td><td>{demand.load_amount} {demand.load_unit === "hours" ? "h" : demand.load_unit}</td></tr>)}</tbody></table>
+            <Pager pagination={demandPages} label="demandas do projeto" />
           </div>}
           <fieldset disabled={busy}><legend>Participantes</legend>
             {people.map((person) => <div className="scenario-participant" key={person.person_id}>

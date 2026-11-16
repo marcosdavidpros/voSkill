@@ -167,15 +167,24 @@ class OptimizationRunRepository:
                 result = _json_value(result_json)
                 result = result if isinstance(result, dict) else {}
                 metadata = result.get("run_metadata")
-                snapshot_id = metadata.get("snapshot_id") if isinstance(metadata, dict) else None
+                metadata = metadata if isinstance(metadata, dict) else {}
+                configuration = metadata.get("configuration")
+                configuration = configuration if isinstance(configuration, dict) else {}
+                snapshot_id = metadata.get("snapshot_id")
                 scenario_name, project_name = names.get(str(snapshot_id), (None, None))
                 alternatives = result.get("feasible_alternatives")
+                rejected = result.get("rejected_alternatives")
                 runs.append(
                     {
                         "run_id": run_id,
                         "created_at": created_at,
                         "scenario_name": scenario_name,
                         "project_name": project_name,
+                        "status": result.get("status"),
+                        "seed": metadata.get("seed"),
+                        "population_size": configuration.get("population_size"),
+                        "generations": configuration.get("generations"),
+                        "rejected_count": len(rejected) if isinstance(rejected, list) else 0,
                         "alternative_ids": [
                             str(alternative["alternative_id"])
                             for alternative in alternatives

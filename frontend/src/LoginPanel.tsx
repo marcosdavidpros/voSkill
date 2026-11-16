@@ -32,15 +32,19 @@ export default function LoginPanel({ error, onLogin }: LoginPanelProps) {
   }
 
   return (
-    <section className="login-panel" aria-labelledby="login-heading">
-      <p className="eyebrow">ACESSO CORPORATIVO</p>
-      <h1 id="login-heading">Entrar no voSkill</h1>
+    <section className="login-card" aria-labelledby="login-heading">
+      <div className="login-card-header">
+        <img className="login-logo" src="/images/vivo-logo-branco.png" alt="Vivo" />
+        <h1 id="login-heading">Entrar no voSkill</h1>
+        <p>Planejamento de competências</p>
+      </div>
       <form onSubmit={submit}>
-        <label htmlFor="login-username">Matrícula<input id="login-username" name="username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required disabled={busy} /></label>
+        <label htmlFor="login-username">Matrícula<input id="login-username" name="username" autoComplete="username" placeholder="Ex: A0091250" value={username} onChange={(event) => setUsername(event.target.value)} required disabled={busy} /></label>
         <label htmlFor="login-password">Senha<input id="login-password" name="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required disabled={busy} /></label>
         {(localError || error) && <p role="alert">{localError ?? error}</p>}
         <button type="submit" disabled={busy || !username.trim() || !password}>{busy ? "Autenticando…" : "Entrar"}</button>
       </form>
+      <p className="login-card-footer">© {new Date().getFullYear()} voSkill. Todos os direitos reservados.</p>
     </section>
   );
 }

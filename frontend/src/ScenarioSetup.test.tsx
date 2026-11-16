@@ -22,7 +22,7 @@ it("selects a project and participant, records monthly availability and saves a 
   vi.stubGlobal("fetch", fetchMock);
   render(<ScenarioSetup onCreated={vi.fn()} />);
 
-  await user.click(screen.getByRole("button", { name: "Carregar projetos e pessoas" }));
+  await screen.findByRole("option", { name: "Atlas" });
   await user.selectOptions(screen.getByLabelText("Projeto"), "PRJ-001");
   await user.type(screen.getByLabelText("Nome do cenário-base"), "Baseline");
   await user.click(screen.getByRole("checkbox", { name: "P-001 · Alex" }));
@@ -48,7 +48,6 @@ it("shows unauthorized errors without selecting a scenario", async () => {
     json: async () => ({ detail: { code: "FORBIDDEN" } }),
   })));
   render(<ScenarioSetup onCreated={vi.fn()} />);
-  await user.click(screen.getByRole("button", { name: "Carregar projetos e pessoas" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("não pode criar cenários");
   expect(screen.queryByText(/SCN-/)).not.toBeInTheDocument();
 });
@@ -69,7 +68,7 @@ it("applies one monthly workload to every month of a participant", async () => {
   vi.stubGlobal("fetch", fetchMock);
   render(<ScenarioSetup onCreated={vi.fn()} />);
 
-  await user.click(screen.getByRole("button", { name: "Carregar projetos e pessoas" }));
+  await screen.findByRole("option", { name: "Atlas" });
   await user.selectOptions(screen.getByLabelText("Projeto"), "PRJ-001");
   await user.type(screen.getByLabelText("Nome do cenário-base"), "Q3");
   await user.click(screen.getByRole("checkbox", { name: "P-004 · Davi" }));
@@ -101,7 +100,7 @@ it("loads an existing scenario of the project, lets the user edit it and saves w
   vi.stubGlobal("fetch", fetchMock);
   render(<ScenarioSetup onCreated={onCreated} />);
 
-  await user.click(screen.getByRole("button", { name: "Carregar projetos e pessoas" }));
+  await screen.findByRole("option", { name: "Atlas" });
   await user.selectOptions(screen.getByLabelText("Projeto"), "PRJ-001");
   await user.selectOptions(screen.getByLabelText("Cenário"), "SCN-009");
 
@@ -145,7 +144,7 @@ it("explains project demands in a table with skill names", async () => {
   vi.stubGlobal("fetch", fetchMock);
   render(<ScenarioSetup onCreated={vi.fn()} />);
 
-  await user.click(screen.getByRole("button", { name: "Carregar projetos e pessoas" }));
+  await screen.findByRole("option", { name: "Atlas" });
   await user.selectOptions(screen.getByLabelText("Projeto"), "PRJ-001");
 
   expect(await screen.findByRole("heading", { name: "Demandas do projeto" })).toBeInTheDocument();
@@ -170,7 +169,7 @@ it("renders and submits one availability value per person and distinct month", a
   vi.stubGlobal("fetch", fetchMock);
   render(<ScenarioSetup onCreated={vi.fn()} />);
 
-  await user.click(screen.getByRole("button", { name: "Carregar projetos e pessoas" }));
+  await screen.findByRole("option", { name: "Atlas" });
   await user.selectOptions(screen.getByLabelText("Projeto"), "PRJ-001");
   await user.type(screen.getByLabelText("Nome do cenário-base"), "June");
   await user.click(screen.getByRole("checkbox", { name: "P-008 · Giovanna" }));

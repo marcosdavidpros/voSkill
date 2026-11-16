@@ -7,6 +7,7 @@ import {
   type PersonCompetency,
 } from "./api";
 import CatalogSetup from "./CatalogSetup";
+import { Pager, usePagination } from "./Pagination";
 
 function errorMessage(caught: unknown): string {
   const code = caught instanceof Error ? caught.message : "Erro de conexão";
@@ -25,7 +26,7 @@ function errorMessage(caught: unknown): string {
   return messages[code] ?? code;
 }
 
-export default function CompetencyPanel() {
+export default function CompetencyPanel({ peopleOnly = false, active = true }: { peopleOnly?: boolean; active?: boolean }) {
   const [people, setPeople] = useState<CatalogPerson[]>([]);
   const [skills, setSkills] = useState<CatalogSkill[]>([]);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
@@ -40,12 +41,12 @@ export default function CompetencyPanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const recordPages = usePagination(records, undefined, loadedPerson);
 
   function updateCatalogs(personCatalog: CatalogPerson[], skillCatalog: CatalogSkill[]) {
     setPeople(personCatalog);
     setSkills(skillCatalog);
     setCatalogLoaded(true);
-    setMessage("Catálogo carregado.");
   }
 
   function addPerson(person: CatalogPerson) {
@@ -133,6 +134,8 @@ export default function CompetencyPanel() {
         onLoaded={updateCatalogs}
         onPersonCreated={addPerson}
         onSkillCreated={addSkill}
+        showSkillForm={!peopleOnly}
+        active={active}
       />
       {catalogLoaded && <>
           <form className="competency-lookup" onSubmit={load}>
@@ -149,8 +152,9 @@ export default function CompetencyPanel() {
         <h3>Competências de {loadedPerson}</h3>
         {records.length === 0 ? <p>Nenhuma competência cadastrada.</p> : <div className="table-scroll" role="region" aria-label="Competências cadastradas" tabIndex={0}>
           <table><caption className="visually-hidden">Competências cadastradas da pessoa</caption><thead><tr><th scope="col">Skill</th><th scope="col">Nível</th><th scope="col">Evidência</th><th scope="col">Revisão</th><th scope="col">Ação</th></tr></thead>
-            <tbody>{records.map((record) => <tr key={record.competency_id}><th scope="row">{record.skill_name}</th><td>{record.proficiency_level}/5</td><td>{record.evidence}</td><td>{record.review_date}</td><td><button type="button" disabled={busy} onClick={() => edit(record)} aria-label={`Editar ${record.skill_name}`}>Editar</button></td></tr>)}</tbody>
+            <tbody>{recordPages.visible.map((record) => <tr key={record.competency_id}><th scope="row">{record.skill_name}</th><td>{record.proficiency_level}/5</td><td>{record.evidence}</td><td>{record.review_date}</td><td><button type="button" disabled={busy} onClick={() => edit(record)} aria-label={`Editar ${record.skill_name}`}>Editar</button></td></tr>)}</tbody>
           </table>
+          <Pager pagination={recordPages} label="competências" />
         </div>}
         <form className="competency-form" onSubmit={save}>
           <h3>{editing ? `Editar ${editing.skill_name}` : "Cadastrar competência"}</h3>

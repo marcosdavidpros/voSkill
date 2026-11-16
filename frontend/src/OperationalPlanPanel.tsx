@@ -9,6 +9,7 @@ import {
   type OperationalPlans,
   type OptimizationRunSummary,
 } from "./api";
+import { Pager, usePagination } from "./Pagination";
 
 type PlanPanelProps = {
   runs: OptimizationRunSummary[];
@@ -54,6 +55,10 @@ export default function OperationalPlanPanel({ runs, skillNames, personNames }: 
   const task = (item: { title?: string | null; skill_id?: string }) => item.title || skill(item.skill_id ?? "");
   const selected: OperationalPlan | undefined = data?.plans.find((plan) => plan.alternative_id === selectedId);
   const recommended = data?.plans.find((plan) => plan.alternative_id === data.recommended_alternative_id);
+  const sortedAssignments = [...(selected?.assignments ?? [])].sort((a, b) => Number(!a.epic) - Number(!b.epic) || (a.epic ?? "").localeCompare(b.epic ?? "") || a.period.localeCompare(b.period));
+  const planPages = usePagination(data?.plans ?? [], undefined, runId);
+  const assignmentPages = usePagination(sortedAssignments, undefined, `${runId}/${selectedId}`);
+  const slotPages = usePagination(selected?.slots ?? [], undefined, `${runId}/${selectedId}`);
 
   function advice(issue: OperationalIssue): string {
     if (issue.code === "overload") {
@@ -107,7 +112,7 @@ export default function OperationalPlanPanel({ runs, skillNames, personNames }: 
         <div className="table-scroll" role="region" aria-label="Alternativas por segurança operacional" tabIndex={0}>
           <table><caption className="visually-hidden">Alternativas ordenadas da mais segura para a menos segura</caption>
             <thead><tr><th scope="col">Alternativa</th><th scope="col">Executável</th><th scope="col">Pessoas-mês sobrecarregadas</th><th scope="col">Horas acima da disponibilidade</th><th scope="col">Pico de utilização</th><th scope="col">Tarefas sem competência</th><th scope="col">Tarefas abaixo do nível</th><th scope="col">Plano</th></tr></thead>
-            <tbody>{data.plans.map((plan) => <tr key={plan.alternative_id} aria-selected={plan.alternative_id === selectedId}>
+            <tbody>{planPages.visible.map((plan) => <tr key={plan.alternative_id} aria-selected={plan.alternative_id === selectedId}>
               <th scope="row">{plan.alternative_id}{plan.alternative_id === data.recommended_alternative_id ? " · mais segura" : ""}</th>
               <td>{plan.executable ? "Sim" : "Não"}</td>
               <td>{plan.summary.overloaded_slots + plan.summary.unavailable_slots}</td>
@@ -118,25 +123,28 @@ export default function OperationalPlanPanel({ runs, skillNames, personNames }: 
               <td><button type="button" onClick={() => setSelectedId(plan.alternative_id)} disabled={plan.alternative_id === selectedId} aria-label={`Ver plano ${plan.alternative_id}`}>{plan.alternative_id === selectedId ? "Exibido" : "Ver plano"}</button></td>
             </tr>)}</tbody></table>
         </div>
+        <Pager pagination={planPages} label="alternativas" />
       </>}
 
       {selected && <div className="plan-detail">
         <h3>Quem faz cada tarefa · {selected.alternative_id}</h3>
         <div className="table-scroll" role="region" aria-label="Responsáveis por tarefa" tabIndex={0}>
           <table><thead><tr><th scope="col">Épico</th><th scope="col">Tarefa</th><th scope="col">Skill</th><th scope="col">Mês</th><th scope="col">Horas</th><th scope="col">Responsável</th><th scope="col">Competência</th></tr></thead>
-            <tbody>{[...selected.assignments].sort((a, b) => Number(!a.epic) - Number(!b.epic) || (a.epic ?? "").localeCompare(b.epic ?? "") || a.period.localeCompare(b.period)).map((item) => <tr key={item.demand_id} className={item.status === "ok" ? undefined : "plan-risk"}>
+            <tbody>{assignmentPages.visible.map((item) => <tr key={item.demand_id} className={item.status === "ok" ? undefined : "plan-risk"}>
               <td>{item.epic ?? "Sem épico"}</td><th scope="row">{task(item)}</th><td>{skill(item.skill_id)}</td><td>{item.period}</td><td>{item.load_amount}</td><td>{person(item.person_id)}</td><td>{competency(item)}</td>
             </tr>)}</tbody></table>
         </div>
+        <Pager pagination={assignmentPages} label="responsáveis por tarefa" />
 
         <h3>Carga por pessoa e mês</h3>
         <div className="table-scroll" role="region" aria-label="Carga por pessoa e mês" tabIndex={0}>
           <table><thead><tr><th scope="col">Pessoa</th><th scope="col">Mês</th><th scope="col">Atribuído</th><th scope="col">Disponível</th><th scope="col">Utilização</th><th scope="col">Situação</th></tr></thead>
-            <tbody>{selected.slots.map((slot) => <tr key={`${slot.person_id}-${slot.period}`} className={slot.status === "ok" ? undefined : "plan-risk"}>
+            <tbody>{slotPages.visible.map((slot) => <tr key={`${slot.person_id}-${slot.period}`} className={slot.status === "ok" ? undefined : "plan-risk"}>
               <th scope="row">{person(slot.person_id)}</th><td>{slot.period}</td><td>{slot.assigned_hours} h</td><td>{slot.available_hours === null ? "—" : `${slot.available_hours} h`}</td><td>{percent(slot.utilization)}</td>
               <td>{slot.status === "ok" ? "Dentro da disponibilidade" : slot.status === "overloaded" ? `Sobrecarregada: ${slot.excess_hours} h a mais` : "Sem disponibilidade informada"}</td>
             </tr>)}</tbody></table>
         </div>
+        <Pager pagination={slotPages} label="carga por pessoa e mês" />
 
         <h3>O que mudar para ficar executável</h3>
         {selected.issues.length === 0 ? <p>Nenhum ajuste necessário nesta alternativa.</p> : <ul>{selected.issues.map((issue, index) => <li key={`${issue.code}-${issue.person_id}-${issue.demand_id ?? issue.period}-${index}`}>{advice(issue)}</li>)}</ul>}

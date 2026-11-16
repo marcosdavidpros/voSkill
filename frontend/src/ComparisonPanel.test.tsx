@@ -119,6 +119,7 @@ describe("accessible comparison panel", () => {
     const user = userEvent.setup();
     stubDashboardFetch();
     render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Cálculo" }));
 
     await user.click(await screen.findByRole("tab", { name: "Cenários" }));
     await screen.findAllByRole("option", { name: "Atlas · Q3" });
@@ -139,6 +140,7 @@ describe("accessible comparison panel", () => {
     const user = userEvent.setup();
     const fetchMock = stubDashboardFetch();
     render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Cálculo" }));
 
     await user.click(await screen.findByRole("tab", { name: "Alternativas" }));
     const panel = screen.getByRole("tabpanel", { name: "Alternativas" });
@@ -163,6 +165,7 @@ describe("accessible comparison panel", () => {
     const user = userEvent.setup();
     stubDashboardFetch();
     render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Cálculo" }));
 
     const scenariosTab = await screen.findByRole("tab", { name: "Cenários" });
     const alternativesTab = screen.getByRole("tab", { name: "Alternativas" });
@@ -178,6 +181,7 @@ describe("accessible comparison panel", () => {
     const user = userEvent.setup();
     stubDashboardFetch();
     render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Cálculo" }));
 
     const panel = await screen.findByRole("tabpanel", { name: "Cenários" });
     await within(panel).findAllByRole("option", { name: "Atlas · Q3" });

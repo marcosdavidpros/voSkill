@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import CompetencyPanel from "./CompetencyPanel";
@@ -28,7 +28,6 @@ it("loads, creates and corrects competencies for an existing person", async () =
   vi.stubGlobal("fetch", fetchMock);
   render(<CompetencyPanel />);
 
-  await user.click(screen.getByRole("button", { name: "Carregar pessoas e skills" }));
   await screen.findByRole("option", { name: "Alex" });
   await user.selectOptions(screen.getByLabelText("Pessoa"), "P-001");
   await user.click(screen.getByRole("button", { name: "Consultar competências" }));
@@ -59,10 +58,50 @@ it("explains when a person is not authorized", async () => {
     ok: false,
     json: async () => ({ detail: { code: "FORBIDDEN" } }),
   })));
-  const user = userEvent.setup();
   render(<CompetencyPanel />);
-  await user.click(screen.getByRole("button", { name: "Carregar pessoas e skills" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Seu perfil pode consultar, mas não cadastrar");
+  expect(screen.getByRole("button", { name: "Tentar carregar novamente" })).toBeInTheDocument();
+});
+
+it("loads people and skills when the panel opens, without a load button", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => ({
+    ok: true,
+    json: async () => String(input) === "/api/people" ? [{ person_id: "P-001", display_name: "Alex" }] : [{ skill_id: "SKILL-1", skill_name: "Java", description: null }],
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<CompetencyPanel />);
+
+  expect(await screen.findByRole("option", { name: "Alex" })).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith("/api/people", expect.anything());
+  expect(fetchMock).toHaveBeenCalledWith("/api/skills", expect.anything());
+  expect(screen.queryByRole("button", { name: /Carregar pessoas e skills|Tentar carregar/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Carregar pessoas e skills|Tentar carregar|Atualizar catálogo/ })).not.toBeInTheDocument();
+  expect(screen.queryByText("Catálogo carregado.")).not.toBeInTheDocument();
+});
+
+it("refreshes the catalog by itself when the panel is shown again, so new skills appear", async () => {
+  const skills = [{ skill_id: "SKILL-1", skill_name: "Java", description: null }];
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => ({
+    ok: true,
+    json: async () => String(input) === "/api/people" ? [{ person_id: "P-001", display_name: "Alex" }] : String(input).includes("/competencies") ? [] : skills,
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+  const user = userEvent.setup();
+  const { rerender } = render(<CompetencyPanel peopleOnly active />);
+  await screen.findByRole("option", { name: "Alex" });
+  await user.selectOptions(screen.getByLabelText("Pessoa"), "P-001");
+  await user.click(screen.getByRole("button", { name: "Consultar competências" }));
+  await screen.findByRole("option", { name: "Java" });
+  const skillCalls = () => fetchMock.mock.calls.filter(([url]) => String(url) === "/api/skills").length;
+  expect(skillCalls()).toBe(1);
+
+  skills.push({ skill_id: "SKILL-2", skill_name: "Go", description: null });
+  rerender(<CompetencyPanel peopleOnly active={false} />);
+  expect(skillCalls()).toBe(1);
+  rerender(<CompetencyPanel peopleOnly active />);
+
+  await waitFor(() => expect(skillCalls()).toBe(2));
+  expect(await screen.findByRole("option", { name: "Go" })).toBeInTheDocument();
 });
 
 it("loads the catalog and creates selectable people and skills", async () => {
@@ -90,7 +129,6 @@ it("loads the catalog and creates selectable people and skills", async () => {
   const user = userEvent.setup();
   render(<CompetencyPanel />);
 
-  await user.click(screen.getByRole("button", { name: "Carregar pessoas e skills" }));
   expect(await screen.findByRole("option", { name: "Alex" })).toBeInTheDocument();
 
   await user.type(screen.getByLabelText("Nova pessoa"), "Sam");

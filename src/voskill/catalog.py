@@ -120,3 +120,49 @@ class CatalogRepository:
             raise
         finally:
             connection.close()
+
+    def update_skill(
+        self, skill_id: str, skill_name: str, description: str | None = None
+    ) -> dict[str, object]:
+        normalized_name = skill_name.strip()
+        if not normalized_name:
+            raise CatalogError("REQUIRED_SKILL_NAME", 422)
+        normalized_description = description.strip() if description and description.strip() else None
+        connection = self._connection_factory()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT SKILL_ID
+                      FROM VSK_SKILLS
+                     WHERE UPPER(TRIM(SKILL_NAME)) = UPPER(:skill_name)
+                       AND SKILL_ID <> :skill_id
+                    """,
+                    skill_name=normalized_name,
+                    skill_id=skill_id,
+                )
+                if cursor.fetchone() is not None:
+                    raise CatalogError("SKILL_ALREADY_EXISTS", 409)
+                cursor.execute(
+                    """
+                    UPDATE VSK_SKILLS
+                       SET SKILL_NAME = :skill_name, DESCRIPTION = :description
+                     WHERE SKILL_ID = :skill_id
+                    """,
+                    skill_id=skill_id,
+                    skill_name=normalized_name,
+                    description=normalized_description,
+                )
+                if cursor.rowcount == 0:
+                    raise CatalogError("SKILL_NOT_FOUND", 404)
+                connection.commit()
+                return {
+                    "skill_id": skill_id,
+                    "skill_name": normalized_name,
+                    "description": normalized_description,
+                }
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()

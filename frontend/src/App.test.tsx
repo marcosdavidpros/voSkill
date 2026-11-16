@@ -158,6 +158,10 @@ describe("competency map", () => {
     });
     await user.tab();
     expect(wordmark).toHaveFocus();
+    for (const name of ["Mapa do cenário", "Decisão operacional", "Cálculo", "Pessoas", "Skills", "Projetos"]) {
+      await user.tab();
+      expect(screen.getByRole("button", { name })).toHaveFocus();
+    }
     await user.tab();
     expect(signOutButton).toHaveFocus();
     await user.tab();
@@ -234,6 +238,7 @@ describe("competency map", () => {
     render(<App />);
 
     await screen.findByRole("button", { name: "Carregar mapa" });
+    await user.click(screen.getByRole("button", { name: "Cálculo" }));
     const lookup = await screen.findByRole("region", { name: "Explicação da alternativa" });
     await within(lookup).findByRole("option", { name: /Atlas · Baseline · / });
     await user.selectOptions(within(lookup).getByRole("combobox", { name: "Execução" }), "RUN-001");
@@ -322,6 +327,51 @@ describe("competency map", () => {
     expect(within(table).getByRole("rowheader", { name: "Nuvem" })).toBeInTheDocument();
     expect(within(table).queryByText("CLOUD")).not.toBeInTheDocument();
     expect(screen.getByText(/Projeto Atlas/)).toHaveTextContent("Projeto Atlas · Cenário Baseline");
+  });
+
+  it("organizes the sections in a main menu and shows one area at a time", async () => {
+    const user = userEvent.setup();
+    stubMapAndRiskPanel();
+    render(<App />);
+
+    const menu = await screen.findByRole("navigation", { name: "Menu principal" });
+    expect(within(menu).getAllByRole("button").map((button) => button.textContent)).toEqual([
+      "Mapa do cenário", "Decisão operacional", "Cálculo", "Pessoas", "Skills", "Projetos",
+    ]);
+    expect(within(menu).getByRole("button", { name: "Mapa do cenário" })).toHaveAttribute("aria-current", "page");
+    expect(await screen.findByRole("heading", { name: "Risco por limiar configurado" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Otimização do cenário" })).not.toBeInTheDocument();
+
+    await user.click(within(menu).getByRole("button", { name: "Cálculo" }));
+    for (const heading of ["Otimização do cenário", "Explicação da alternativa", "Cenários e alternativas"]) {
+      expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole("heading", { name: "Risco por limiar configurado" })).not.toBeInTheDocument();
+
+    await user.click(within(menu).getByRole("button", { name: "Decisão operacional" }));
+    expect(await screen.findByRole("heading", { name: "Plano operacional da alternativa" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Otimização do cenário" })).not.toBeInTheDocument();
+
+    await user.click(within(menu).getByRole("button", { name: "Pessoas" }));
+    expect(await screen.findByRole("heading", { name: "Competências por pessoa" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Nova skill")).not.toBeInTheDocument();
+
+    await user.click(within(menu).getByRole("button", { name: "Projetos" }));
+    const tabs = await screen.findByRole("tablist", { name: "Seções de projetos" });
+    expect(within(tabs).getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Projetos", "Demandas", "Cenários"]);
+  });
+
+  it("shows the brand login screen without the application menu", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ detail: { code: "AUTHENTICATION_REQUIRED" } }),
+    })));
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Entrar no voSkill" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Vivo" })).toHaveAttribute("src", "/images/vivo-logo-branco.png");
+    expect(screen.queryByRole("navigation", { name: "Menu principal" })).not.toBeInTheDocument();
   });
 
   it("guides the user to create a scenario when none exists", async () => {

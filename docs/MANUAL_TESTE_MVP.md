@@ -95,13 +95,31 @@ Exemplo fictício de demanda:
 ## 5. Informar disponibilidade e montar cenário-base
 
 1. Em **Disponibilidade e cenário**, escolha **Carregar projetos e pessoas**.
-2. Selecione `Atlas`. A tela lista as demandas do projeto e os participantes ativos.
-3. Marque cada pessoa que poderá receber alocação. Para cada pessoa selecionada,
-   informe disponibilidade em horas para todos os meses que têm demanda. Por exemplo,
-   `P-001` com 40 horas em `2026-01`.
-4. Dê um nome ao cenário e selecione **Salvar cenário-base**.
-5. A resposta mostra o ID do cenário `SCN-...` e do snapshot `SNP-...`. O mapa passa
-   a carregar o cenário recém-criado.
+2. Selecione `Atlas`. A tela mostra a tabela **Demandas do projeto** (skill com nome,
+   nível exigido, mês e carga) e a lista de participantes ativos. Essas demandas são
+   o que o cenário precisa cobrir; a disponibilidade informada é comparada a elas.
+3. Em **Cenário**, deixe **Novo cenário** para criar um cenário-base.
+4. Marque cada pessoa que poderá receber alocação. A disponibilidade é por pessoa e
+   por mês, não por skill: informe as horas de cada mês que tem demanda. Para
+   preencher todos os meses de uma vez, digite o valor em **Carga horária mensal** da
+   pessoa e depois ajuste os meses que forem exceção. Por exemplo, `P-001` com 40
+   horas em `2026-01`.
+5. Dê um nome ao cenário e selecione **Salvar cenário-base**.
+6. A tela confirma com o nome do cenário. Ele passa a aparecer nos seletores de
+   cenário (mapa, otimização e comparação) e o mapa carrega o cenário criado.
+
+### Editar um cenário existente
+
+1. Em **Disponibilidade e cenário**, selecione o projeto e escolha o cenário em
+   **Cenário**. O formulário é preenchido com nome, pessoas e horas por mês.
+2. Altere nome, pessoas ou horas e selecione **Salvar alterações**.
+3. A edição grava um novo snapshot imutável e mantém o anterior para auditoria. O
+   snapshot é refeito com as demandas e competências atuais do projeto, então meses
+   novos exigem disponibilidade.
+4. Um cenário que já tem alternativas geradas não pode ser editado
+   (`SCENARIO_HAS_ALTERNATIVES`). Nesse caso escolha **Novo cenário** e salve com
+   outro nome. Execuções feitas antes da edição passam a aparecer como cenário não
+   identificado nas listas de execução.
 
 Se uma skill não estiver confirmada para uma pessoa, o snapshot registra nível zero
 para o cálculo da lacuna; relações de skills podem contribuir com inferências no
@@ -109,23 +127,35 @@ mapa, mas não transformam a hipótese em competência confirmada.
 
 ## 6. Executar a otimização
 
-1. Confira que o cenário-base salvo está selecionado no mapa.
-2. Na seção **Otimização do cenário**, escolha parâmetros. Para reproduzir o exemplo
-   use seed 42, população 20 e 12 gerações.
+1. Em **Cenário a calcular**, na seção **Otimização do cenário**, escolha o cenário
+   pelo nome (formato `Projeto · Cenário`). O mesmo cenário pode ser trocado no
+   seletor do topo da página, que carrega o mapa de cobertura.
+2. Escolha parâmetros. Para reproduzir o exemplo use seed 42, população 20 e
+   12 gerações. Seed é a semente do sorteio, população é o número de candidatas por
+   geração e gerações é o número de rodadas de evolução. Valores maiores, como 64 e
+   40, exploram mais combinações.
 3. Selecione **Executar otimização**. O sistema busca o snapshot associado ao cenário
    e envia seus perfis, competências, disponibilidades e demandas ao NSGA-II.
 4. Confira o `RUN-...`, algoritmo/versão, snapshot, seed, população e gerações. As
-   alternativas mostram lacuna de competência e pico de utilização separadamente;
-   violações rejeitadas aparecem em texto.
-5. Se não houver alternativa viável, ajuste dados de disponibilidade/demanda e crie
-   outro cenário-base. Nenhuma alocação é aplicada automaticamente.
-6. Para comparar alternativas, use a aba **Alternativas** da seção **Cenários e
-   alternativas**, informe o ID da execução e dois IDs `A-...` que apareçam como
-   viáveis no resultado. Não há ranking agregado.
+   alternativas mostram lacuna de competência (horas ponderadas pelo déficit de nível)
+   e pico de utilização (maior carga dividida pela disponibilidade; 1,0 é 100%)
+   separadamente. Violações rejeitadas aparecem em texto.
+5. Se não houver alternativa viável, aumente a disponibilidade, inclua mais pessoas ou
+   reduza demandas e salve o cenário. Nenhuma alocação é aplicada automaticamente.
+6. Para ver o detalhe de uma alternativa, use **Explicação da alternativa**:
+   escolha a **Execução** (listada como `Projeto · Cenário · data/hora`) e a
+   **Alternativa**, e selecione **Consultar explicação**.
+7. Para comparar, use **Cenários e alternativas**. Na aba **Alternativas**, escolha a
+   **Execução** e duas alternativas dela. Na aba **Cenários**, escolha **Cenário base**
+   e **Cenário para comparar**. Não há ranking agregado.
+8. Em **Risco por limiar configurado**, escolha a **Skill crítica** e o número mínimo
+   de pessoas confirmadas, depois **Salvar limiar**. O valor fica gravado por projeto
+   e skill em `VSK_CRITICAL_SKILL_THRESHOLDS`; o painel lista as skills abaixo do
+   limiar com as pessoas e evidências.
 
 Reutilizar a mesma seed, snapshot e parâmetros torna a execução reproduzível para a
 mesma versão do algoritmo. O resultado e suas premissas ficam registrados para
-auditoria.
+auditoria. Cada usuário vê as próprias execuções; perfis de auditoria veem as de todos.
 
 ## 7. IA e tokens
 
@@ -150,6 +180,9 @@ determinístico continua utilizável.
 | `PROJECT_HAS_NO_DEMANDS` | Cadastre pelo menos uma demanda antes do cenário-base. |
 | `MISSING_AVAILABILITY` | Informe disponibilidade para cada participante em todos os meses com demanda. |
 | `PERIOD_OUTSIDE_HORIZON` | Ajuste horizonte ou meses de demanda/disponibilidade. |
+| `SCENARIO_ALREADY_EXISTS` | Já existe cenário com esse nome no projeto; use outro nome. |
+| `SCENARIO_HAS_ALTERNATIVES` | O cenário já tem alternativas e não pode ser editado; salve como novo cenário. |
+| `SCENARIO_NOT_FOUND` | O cenário não existe; escolha outro na lista ou crie um cenário-base. |
 
 Para verificar a sessão sem enviar senha, abra `http://127.0.0.1:8000/auth/me`; sem
 cookie válido, a resposta esperada é `401`. A documentação OpenAPI fica em

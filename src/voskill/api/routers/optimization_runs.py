@@ -9,6 +9,7 @@ from ...alternative_explanation import (
     AlternativeExplainer,
     explain_alternative,
 )
+from ...operational_plan import build_operational_plans
 from ...optimization_runs import (
     OptimizationRunError,
     OptimizationRunRepository,
@@ -28,6 +29,7 @@ from ..schemas import (
     OptimizationRunPayload,
     OptimizationRunResponse,
     OptimizationRunSummaryResponse,
+    OperationalPlansResponse,
 )
 
 router = APIRouter()
@@ -65,6 +67,32 @@ def list_optimization_runs(
 ) -> list[dict[str, object]]:
     actor_id, can_audit = access
     return repository.list_runs(actor_id, can_audit)
+
+
+@router.get("/optimization-runs/{run_id}/operational-plan", response_model=OperationalPlansResponse)
+def get_operational_plan(
+    run_id: str,
+    access: Annotated[tuple[str, bool], Depends(get_optimization_run_access)],
+    repository: Annotated[OptimizationRunRepository, Depends(get_optimization_run_repository)],
+) -> dict[str, object]:
+    try:
+        record = repository.get_run(run_id)
+        actor_id, can_audit = access
+        if record["actor_id"] != actor_id and not can_audit:
+            raise OptimizationRunError("RUN_NOT_FOUND", 404)
+
+        result = record.get("result")
+        result = result if isinstance(result, Mapping) else {}
+        metadata = result.get("run_metadata")
+        snapshot_id = metadata.get("snapshot_id") if isinstance(metadata, Mapping) else None
+        alternatives = result.get("feasible_alternatives")
+        if not snapshot_id:
+            raise OptimizationRunError("SNAPSHOT_NOT_FOUND", 404)
+        snapshot = repository.get_scenario_snapshot(str(snapshot_id))
+        plans = build_operational_plans(alternatives if isinstance(alternatives, list) else [], snapshot)
+        return {"run_id": run_id, **plans}
+    except OptimizationRunError as error:
+        raise_optimization_run_error(error)
 
 
 @router.get("/optimization-runs/{run_id}", response_model=OptimizationRunResponse)

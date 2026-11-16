@@ -37,8 +37,8 @@ def test_create_demand_persists_values_and_commits() -> None:
 def test_list_demands_returns_each_period_without_collapsing_rows() -> None:
     cursor = FakeCursor(
         [
-            ("D-1", "P-001", "SKILL-1", 3, date(2026, 1, 1), Decimal(40), "hours", "U-001"),
-            ("D-2", "P-001", "SKILL-1", 4, date(2026, 2, 1), Decimal(32), "hours", "U-001"),
+            ("D-1", "P-001", "SKILL-1", 3, date(2026, 1, 1), Decimal(40), "hours", "U-001", "Integração", "Pagamentos"),
+            ("D-2", "P-001", "SKILL-1", 4, date(2026, 2, 1), Decimal(32), "hours", "U-001", None, None),
         ]
     )
     connection = FakeConnection(cursor)
@@ -49,6 +49,70 @@ def test_list_demands_returns_each_period_without_collapsing_rows() -> None:
     assert [row["period"] for row in result] == ["2026-01", "2026-02"]
     assert [row["load_amount"] for row in result] == [Decimal(40), Decimal(32)]
     assert [row["demand_id"] for row in result] == ["D-1", "D-2"]
+    assert [(row["title"], row["epic"]) for row in result] == [("Integração", "Pagamentos"), (None, None)]
+
+def test_create_demand_stores_trimmed_title_and_epic_and_blank_becomes_null() -> None:
+    cursor = FakeCursor()
+    connection = FakeConnection(cursor)
+    repository = DemandRepository(connection_factory=lambda: connection)
+
+    with_labels = repository.create(
+        project_id="P-001", skill_id="SKILL-1", proficiency_level=3,
+        period_start=date(2026, 1, 1), load_amount=Decimal(40), load_unit="hours",
+        actor_id="U-001", title="  Integração com fila  ", epic=" Pagamentos ",
+    )
+    assert cursor.insert_params is not None
+    assert cursor.insert_params["title"] == "Integração com fila"
+    assert cursor.insert_params["epic_name"] == "Pagamentos"
+    assert (with_labels["title"], with_labels["epic"]) == ("Integração com fila", "Pagamentos")
+
+    blank = repository.create(
+        project_id="P-001", skill_id="SKILL-1", proficiency_level=3,
+        period_start=date(2026, 1, 1), load_amount=Decimal(40), load_unit="hours",
+        actor_id="U-001", title="   ", epic="",
+    )
+    assert cursor.insert_params["title"] is None
+    assert cursor.insert_params["epic_name"] is None
+    assert (blank["title"], blank["epic"]) == (None, None)
+
+def test_update_demand_changes_title_and_epic() -> None:
+    cursor = FakeCursor()
+    connection = FakeConnection(cursor)
+    repository = DemandRepository(connection_factory=lambda: connection)
+
+    result = repository.update(
+        demand_id="D-1", project_id="P-001", skill_id="SKILL-1", proficiency_level=4,
+        period_start=date(2026, 2, 1), load_amount=Decimal(32), load_unit="hours",
+        actor_id="U-002", title="Novo título", epic="Épico B",
+    )
+
+    assert cursor.update_params is not None
+    assert (cursor.update_params["title"], cursor.update_params["epic_name"]) == ("Novo título", "Épico B")
+    assert (result["title"], result["epic"]) == ("Novo título", "Épico B")
+
+def test_delete_demand_removes_row_and_commits() -> None:
+    cursor = FakeCursor()
+    connection = FakeConnection(cursor)
+    repository = DemandRepository(connection_factory=lambda: connection)
+
+    repository.delete(demand_id="D-1", project_id="P-001")
+
+    assert cursor.delete_params == {"demand_id": "D-1", "project_id": "P-001"}
+    assert connection.commit_count == 1
+    assert connection.closed
+
+def test_delete_unknown_demand_is_rejected() -> None:
+    cursor = FakeCursor()
+    cursor.rowcount = 0
+    connection = FakeConnection(cursor)
+    repository = DemandRepository(connection_factory=lambda: connection)
+
+    with pytest.raises(DemandError) as raised:
+        repository.delete(demand_id="D-404", project_id="P-001")
+
+    assert (raised.value.code, raised.value.status_code) == ("DEMAND_NOT_FOUND", 404)
+    assert connection.commit_count == 0
+    assert connection.rollback_count == 1
 
 def test_update_demand_keeps_row_editable() -> None:
     cursor = FakeCursor()

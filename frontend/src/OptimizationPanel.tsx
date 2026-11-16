@@ -25,6 +25,32 @@ type OptimizationPanelProps = {
   onRunCreated: () => void;
 };
 
+type RejectedAlternative = OptimizationRun["result"]["rejected_alternatives"][number];
+
+function groupViolations(rejected: RejectedAlternative[]) {
+  const groups = new Map<string, {
+    code: string;
+    label: string;
+    alternatives: Set<string>;
+    maxAssigned: number | null;
+    available: number | null;
+  }>();
+  for (const alternative of rejected) {
+    for (const violation of alternative.violations) {
+      const key = violation.constraint_id ?? violation.code;
+      const label = violation.person_id && violation.period ? `${violation.person_id} · ${violation.period}` : key;
+      const group = groups.get(key) ?? { code: violation.code, label, alternatives: new Set(), maxAssigned: null, available: null };
+      group.alternatives.add(alternative.alternative_id);
+      if (violation.assigned_hours !== undefined) {
+        group.maxAssigned = Math.max(group.maxAssigned ?? 0, Number(violation.assigned_hours));
+      }
+      if (violation.available_hours !== undefined) group.available = Number(violation.available_hours);
+      groups.set(key, group);
+    }
+  }
+  return [...groups.entries()].sort(([, a], [, b]) => b.alternatives.size - a.alternatives.size || a.label.localeCompare(b.label));
+}
+
 export default function OptimizationPanel({ scenarioId, scenarios, onScenarioChange, onRunCreated }: OptimizationPanelProps) {
   const [seed, setSeed] = useState("42");
   const [populationSize, setPopulationSize] = useState("20");
@@ -83,7 +109,13 @@ export default function OptimizationPanel({ scenarioId, scenarios, onScenarioCha
             {alternatives.map((alternative) => <tr key={alternative.alternative_id}><th scope="row">{alternative.alternative_id}</th><td>{alternative.objective_metrics.skill_gap_hours ?? "Indisponível"}</td><td>{alternative.objective_metrics.peak_utilization ?? "Indisponível"}</td></tr>)}
           </tbody></table>
         </div> : <p>Nenhuma alternativa viável foi encontrada.</p>}
-        {run.result.rejected_alternatives.length > 0 && <section aria-label="Restrições das alternativas rejeitadas"><h3>Restrições registradas</h3><ul>{run.result.rejected_alternatives.flatMap((alternative) => alternative.violations.map((violation) => <li key={`${alternative.alternative_id}-${violation.constraint_id}`}>{alternative.alternative_id}: {violation.code} · {violation.constraint_id}</li>))}</ul></section>}
+        {run.result.rejected_alternatives.length > 0 && <section aria-label="Restrições das alternativas rejeitadas">
+          <h3>Restrições registradas</h3>
+          {run.result.status === "infeasible" && <p>Cada demanda é atribuída inteira a uma pessoa. Se a carga de uma demanda for maior que a disponibilidade mensal de qualquer pessoa do cenário, nenhuma alternativa é viável: aumente a disponibilidade, inclua mais pessoas ou reduza a demanda.</p>}
+          <ul>{groupViolations(run.result.rejected_alternatives).map(([key, group]) => <li key={key}>
+            {group.label} · {group.code}{group.maxAssigned !== null && group.available !== null ? `: demanda de até ${group.maxAssigned} h para ${group.available} h disponíveis` : ""} (em {group.alternatives.size} de {run.result.rejected_alternatives.length} alternativas rejeitadas)
+          </li>)}</ul>
+        </section>}
       </div>}
     </section>
   );

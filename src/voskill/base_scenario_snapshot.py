@@ -27,6 +27,8 @@ def optimizer_demand(row: tuple[object, ...], project_load_unit: str) -> dict[st
         "proficiency_level": int(row[2]),
         "period": as_date(row[3]).strftime("%Y-%m"),
         "load_amount": float(row[4]),
+        "title": row[6],
+        "epic": row[7],
     }
 
 

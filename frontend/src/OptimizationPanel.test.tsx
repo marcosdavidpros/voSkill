@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import OptimizationPanel from "./OptimizationPanel";
@@ -75,6 +75,36 @@ it("shows infeasible status and recorded violations without invoking an LLM", as
 
   expect(await screen.findByText(/Sem alternativas viáveis/)).toBeInTheDocument();
   expect(screen.getByText(/capacity_exceeded/)).toBeInTheDocument();
+});
+
+it("groups repeated violations by person and month with hours and alternative count", async () => {
+  const user = userEvent.setup();
+  const violation = (code: string, person_id: string, period: string, assigned_hours: number, available_hours: number) => ({
+    code, constraint_id: `capacity:${person_id}:${period}`, person_id, period, assigned_hours, available_hours,
+  });
+  const rejected = ["A-001", "A-002", "A-003"].map((alternative_id, index) => ({
+    alternative_id,
+    violations: [
+      violation("capacity_exceeded", "P-008", "2026-06", 320, 200),
+      ...(index === 0 ? [violation("capacity_exceeded", "P-002", "2026-08", 120, 100)] : []),
+    ],
+  }));
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => ({
+    ok: true,
+    status: 201,
+    json: async () => String(input).includes("optimization-snapshot")
+      ? { snapshot_id: "SNP-001", profiles: [], demands: [] }
+      : { run_id: "RUN-003", result: { status: "infeasible", feasible_alternatives: [], rejected_alternatives: rejected } },
+  })));
+  render(<OptimizationPanel scenarioId="SCN-001" scenarios={scenarios} onScenarioChange={vi.fn()} onRunCreated={vi.fn()} />);
+  await user.click(screen.getByRole("button", { name: "Executar otimização" }));
+
+  const section = await screen.findByRole("region", { name: "Restrições das alternativas rejeitadas" });
+  const items = within(section).getAllByRole("listitem");
+  expect(items).toHaveLength(2);
+  expect(items[0]).toHaveTextContent("P-008 · 2026-06 · capacity_exceeded: demanda de até 320 h para 200 h disponíveis (em 3 de 3 alternativas rejeitadas)");
+  expect(items[1]).toHaveTextContent("P-002 · 2026-08 · capacity_exceeded: demanda de até 120 h para 100 h disponíveis (em 1 de 3 alternativas rejeitadas)");
+  expect(screen.getByText(/Cada demanda é atribuída inteira a uma pessoa/)).toBeInTheDocument();
 });
 
 it("lets the user choose which scenario to calculate by name", async () => {

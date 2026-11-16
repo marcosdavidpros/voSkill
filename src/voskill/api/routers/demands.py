@@ -26,6 +26,8 @@ def create_project_demand(
             load_amount=payload.load_amount,
             load_unit=payload.load_unit,
             actor_id=actor_id,
+            title=payload.title,
+            epic=payload.epic,
         )
     except DemandError as error:
         raise_demand_error(error)
@@ -61,6 +63,21 @@ def update_project_demand(
             load_amount=payload.load_amount,
             load_unit=payload.load_unit,
             actor_id=actor_id,
+            title=payload.title,
+            epic=payload.epic,
         )
+    except DemandError as error:
+        raise_demand_error(error)
+
+
+@router.delete("/projects/{project_id}/demands/{demand_id}", status_code=204)
+def delete_project_demand(
+    project_id: str,
+    demand_id: str,
+    _actor_id: Annotated[str, Depends(get_actor_id)],
+    repository: Annotated[DemandRepository, Depends(get_demand_repository)],
+) -> None:
+    try:
+        repository.delete(demand_id=demand_id, project_id=project_id)
     except DemandError as error:
         raise_demand_error(error)

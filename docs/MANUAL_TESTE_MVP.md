@@ -6,8 +6,10 @@ são ilustrativos; use os IDs que a API devolver para os registros criados.
 
 ## 1. Preparar o ambiente
 
-1. Confirme que as sete migrations Oracle foram executadas em ordem, de
-   `001_initial_schema.sql` a `007_critical_skill_thresholds.sql`. Não as reexecute
+1. Confirme que as oito migrations Oracle foram executadas em ordem, de
+   `001_initial_schema.sql` a `008_demand_title_epic.sql` (esta última adiciona as
+   colunas `TITLE` e `EPIC_NAME` às demandas e precisa rodar antes de subir esta
+   versão da API). Não as reexecute
    em uma base que já tenha os objetos.
 2. Preencha o `.env` local com as credenciais do schema voSkill (`ORACLE_*`), do
    schema Portal (`PORTAL_ORACLE_*`), LDAP e sessão. Os dois acessos Oracle são
@@ -67,9 +69,19 @@ diagnóstico da API, `http://127.0.0.1:8000/health` deve responder `{"status":"o
    mensal começando no primeiro dia do mês. Exemplo: `2026-11` a `2027-10`.
 2. A unidade do MVP é `hours`; ela não é configurável pela tela.
 3. Escolha uma skill existente, nível exigido de 1 a 5, período dentro do horizonte
-   e carga maior ou igual a zero. Selecione **Registrar demanda**.
-4. Confirme que a linha aparece na tabela com ID `D-...`, skill, nível, período e
-   carga. Erros de horizonte, carga ou permissão aparecem na própria seção.
+   e carga maior ou igual a zero. Opcionalmente informe o **Épico ou história** (o
+   campo sugere os já usados no projeto) e o **Título da tarefa**. Selecione
+   **Registrar demanda**.
+4. Cada demanda é uma tarefa para o otimizador e é atribuída inteira a uma pessoa.
+   Por isso quebre cada épico em tarefas por skill com carga menor ou igual à
+   disponibilidade mensal de uma pessoa (por exemplo, até 200 h).
+5. Confirme que a tarefa aparece na tabela, agrupada pelo épico, com título, skill,
+   nível, período e carga. A linha do épico mostra a quantidade de tarefas e o total de
+   horas. Erros de horizonte, carga ou permissão aparecem na própria seção.
+6. Para corrigir, use **Editar** na linha, altere os campos e selecione **Salvar
+   alterações** (ou **Cancelar edição**). **Excluir** pede confirmação. Cenários já
+   salvos não mudam, pois guardam um snapshot; para refletir a alteração, edite o
+   cenário (seção 5) ou crie um novo.
 
 Exemplo fictício de dados ponta a ponta. Os IDs abaixo são rótulos ilustrativos; na
 aplicação use as opções e UUIDs devolvidos pelo cadastro:
@@ -142,13 +154,29 @@ mapa, mas não transformam a hipótese em competência confirmada.
    separadamente. Violações rejeitadas aparecem em texto.
 5. Se não houver alternativa viável, aumente a disponibilidade, inclua mais pessoas ou
    reduza demandas e salve o cenário. Nenhuma alocação é aplicada automaticamente.
-6. Para ver o detalhe de uma alternativa, use **Explicação da alternativa**:
+6. Para decidir, use **Plano operacional da alternativa** (abre na execução mais
+   recente; troque em **Execução**):
+   - **Tarefas que ninguém do cenário consegue cumprir:** demandas cujo nível exigido
+     ninguém no cenário tem, qualquer que seja a alternativa.
+   - **Alternativa mais segura:** sugestão por uma ordem de desempate explícita
+     (menor excesso de horas acima da disponibilidade, depois menos tarefas sem
+     competência, depois menos tarefas abaixo do nível, depois menor lacuna
+     ponderada). Não é uma nota agregada nem uma aprovação.
+   - **Tabela de alternativas:** sobrecarga, horas excedentes, pico de utilização e
+     tarefas sem competência ou abaixo do nível; use **Ver plano** para abrir uma.
+   - **Quem faz cada tarefa**, **Carga por pessoa e mês** (quem está sobrecarregado) e
+     **O que mudar para ficar executável**, com a ação sugerida para cada problema.
+   Uma alternativa pode ser "viável" para o otimizador (cada tarefa cabe na
+   disponibilidade de uma pessoa) e ainda assim sobrecarregar alguém ao somar as
+   tarefas do mês; o plano mostra essa sobrecarga. Títulos e épicos aparecem para
+   cenários criados ou editados depois da migration 008.
+7. Para ver o detalhe técnico de uma alternativa, use **Explicação da alternativa**:
    escolha a **Execução** (listada como `Projeto · Cenário · data/hora`) e a
    **Alternativa**, e selecione **Consultar explicação**.
-7. Para comparar, use **Cenários e alternativas**. Na aba **Alternativas**, escolha a
+8. Para comparar, use **Cenários e alternativas**. Na aba **Alternativas**, escolha a
    **Execução** e duas alternativas dela. Na aba **Cenários**, escolha **Cenário base**
    e **Cenário para comparar**. Não há ranking agregado.
-8. Em **Risco por limiar configurado**, escolha a **Skill crítica** e o número mínimo
+9. Em **Risco por limiar configurado**, escolha a **Skill crítica** e o número mínimo
    de pessoas confirmadas, depois **Salvar limiar**. O valor fica gravado por projeto
    e skill em `VSK_CRITICAL_SKILL_THRESHOLDS`; o painel lista as skills abaixo do
    limiar com as pessoas e evidências.

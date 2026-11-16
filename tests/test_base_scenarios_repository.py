@@ -49,7 +49,7 @@ class FakeCursor:
         elif "SELECT SCENARIO_ID" in statement and "FROM VSK_SCENARIOS" in statement:
             self.one = ("OTHER",) if self.name_taken else None
         elif "FROM VSK_PROJECT_DEMANDS" in statement:
-            self.rows = [("D-001", "SKILL-1", 3, date(2026, 1, 1), Decimal(10), "hours")]
+            self.rows = [("D-001", "SKILL-1", 3, date(2026, 1, 1), Decimal(10), "hours", "Integração", "Pagamentos")]
         elif "FROM VSK_PERSONS" in statement:
             self.one = ("P-001",) if self.person_exists else None
         elif "FROM VSK_PERSON_COMPETENCIES" in statement:
@@ -117,6 +117,7 @@ def test_create_base_scenario_persists_optimizer_and_comparison_snapshot_atomica
     assert stored["profiles"][0]["competencies"] == {"SKILL-1": 4}
     assert stored["profiles"][0]["availability"] == {"2026-01": 40.0}
     assert stored["demands"][0]["demand_id"] == "D-001"
+    assert (stored["demands"][0]["title"], stored["demands"][0]["epic"]) == ("Integração", "Pagamentos")
     assert stored["periods"]["2026-01"]["demand"]["SKILL-1"]["loadAmount"] == 10.0
     assert cursor.scenario_params["scenario_id"] == result["scenario_id"]
     assert cursor.scenario_params["snapshot_id"] == result["snapshot_id"]

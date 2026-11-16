@@ -126,6 +126,8 @@ class DemandPayload(BaseModel):
     period: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
     load_amount: Decimal = Field(ge=0)
     load_unit: str = Field(min_length=1)
+    title: str | None = Field(default=None, max_length=200)
+    epic: str | None = Field(default=None, max_length=200)
 
     @property
     def period_start(self) -> date:
@@ -178,6 +180,8 @@ class DemandResponse(BaseModel):
     load_amount: float
     load_unit: str
     actor_id: str
+    title: str | None = None
+    epic: str | None = None
 
 
 class CompetencyResponse(BaseModel):
@@ -262,6 +266,15 @@ class OptimizationRunSummaryResponse(BaseModel):
     scenario_name: str | None
     project_name: str | None
     alternative_ids: list[str]
+
+
+class OperationalPlansResponse(BaseModel):
+    run_id: str
+    snapshot_id: str | None
+    recommended_alternative_id: str | None
+    recommendation_rule: list[str]
+    uncovered_demands: list[dict[str, object]]
+    plans: list[dict[str, object]]
 
 
 class OptimizationRunResponse(BaseModel):

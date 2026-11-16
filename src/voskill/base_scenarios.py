@@ -120,7 +120,7 @@ class BaseScenarioRepository:
                 cursor.execute(
                     """
                     SELECT DEMAND_ID, SKILL_ID, PROFICIENCY_LEVEL, PERIOD_START,
-                           LOAD_AMOUNT, LOAD_UNIT
+                           LOAD_AMOUNT, LOAD_UNIT, TITLE, EPIC_NAME
                       FROM VSK_PROJECT_DEMANDS
                      WHERE PROJECT_ID = :project_id
                      ORDER BY PERIOD_START, DEMAND_ID

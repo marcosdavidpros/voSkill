@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import App from "./App";
@@ -74,9 +74,10 @@ describe("metric availability", () => {
     render(<App />);
 
     await screen.findByRole("button", { name: "Carregar mapa" });
-    await screen.findByRole("option", { name: /Atlas · Baseline · / });
-    await user.selectOptions(screen.getByRole("combobox", { name: "Execução" }), "RUN-001");
-    await user.selectOptions(screen.getByRole("combobox", { name: "Alternativa" }), "A-001");
+    const lookup = await screen.findByRole("region", { name: "Explicação da alternativa" });
+    await within(lookup).findByRole("option", { name: /Atlas · Baseline · / });
+    await user.selectOptions(within(lookup).getByRole("combobox", { name: "Execução" }), "RUN-001");
+    await user.selectOptions(within(lookup).getByRole("combobox", { name: "Alternativa" }), "A-001");
     await user.click(screen.getByRole("button", { name: "Consultar explicação" }));
 
     expect(await screen.findByText(/proficiency-level × configured load unit/)).toBeInTheDocument();

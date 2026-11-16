@@ -1,0 +1,43 @@
+-- Run once after 007_critical_skill_thresholds.sql, connected as ITB2CTRF.
+WHENEVER SQLERROR EXIT SQL.SQLCODE
+
+DECLARE
+    L_SESSION_USER VARCHAR2(128);
+    L_COLLISIONS PLS_INTEGER;
+BEGIN
+    L_SESSION_USER := SYS_CONTEXT('USERENV', 'SESSION_USER');
+    IF UPPER(L_SESSION_USER) <> 'ITB2CTRF' THEN
+        RAISE_APPLICATION_ERROR(-20010, 'Connect as ITB2CTRF before altering voSkill objects');
+    END IF;
+
+    SELECT COUNT(*)
+      INTO L_COLLISIONS
+      FROM USER_TAB_COLUMNS
+     WHERE TABLE_NAME = 'VSK_PROJECT_DEMANDS'
+       AND COLUMN_NAME IN ('TITLE', 'EPIC_NAME');
+
+    IF L_COLLISIONS > 0 THEN
+        RAISE_APPLICATION_ERROR(-20011, 'Demand title/epic columns already exist; inspect USER_TAB_COLUMNS');
+    END IF;
+
+    SELECT COUNT(*)
+      INTO L_COLLISIONS
+      FROM USER_OBJECTS
+     WHERE OBJECT_NAME = 'VSK_IX_PD_EPIC';
+
+    IF L_COLLISIONS > 0 THEN
+        RAISE_APPLICATION_ERROR(-20011, 'Demand epic index already exists; inspect USER_OBJECTS');
+    END IF;
+END;
+/
+
+-- Both columns are optional; existing demands keep working with NULL values.
+ALTER TABLE VSK_PROJECT_DEMANDS ADD (
+    TITLE VARCHAR2(200 CHAR),
+    EPIC_NAME VARCHAR2(200 CHAR)
+);
+
+CREATE INDEX VSK_IX_PD_EPIC ON VSK_PROJECT_DEMANDS (PROJECT_ID, EPIC_NAME);
+
+COMMENT ON COLUMN VSK_PROJECT_DEMANDS.TITLE IS 'Short task description for the demand';
+COMMENT ON COLUMN VSK_PROJECT_DEMANDS.EPIC_NAME IS 'Epic or story that groups related demands';

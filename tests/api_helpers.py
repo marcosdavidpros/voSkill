@@ -27,6 +27,13 @@ class MemoryDemandRepository:
                 return row
         raise DemandError("DEMAND_NOT_FOUND", 404)
 
+    def delete(self, demand_id: str, project_id: str) -> None:
+        for row in self.rows:
+            if row["demand_id"] == demand_id and row["project_id"] == project_id:
+                self.rows.remove(row)
+                return
+        raise DemandError("DEMAND_NOT_FOUND", 404)
+
 class MemoryCompetencyRepository:
     def __init__(self) -> None:
         self.rows: list[dict] = []

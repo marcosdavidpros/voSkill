@@ -32,7 +32,11 @@ class DemandRepository:
         load_amount: Decimal,
         load_unit: str,
         actor_id: str,
+        title: str | None = None,
+        epic: str | None = None,
     ) -> dict[str, object]:
+        title = self._clean(title)
+        epic = self._clean(epic)
         connection = self._connection_factory()
         try:
             with connection.cursor() as cursor:
@@ -50,10 +54,12 @@ class DemandRepository:
                     """
                     INSERT INTO VSK_PROJECT_DEMANDS (
                         DEMAND_ID, PROJECT_ID, SKILL_ID, PROFICIENCY_LEVEL,
-                        PERIOD_START, LOAD_AMOUNT, LOAD_UNIT, ACTOR_ID
+                        PERIOD_START, LOAD_AMOUNT, LOAD_UNIT, ACTOR_ID,
+                        TITLE, EPIC_NAME
                     ) VALUES (
                         :demand_id, :project_id, :skill_id, :proficiency_level,
-                        :period_start, :load_amount, :load_unit, :actor_id
+                        :period_start, :load_amount, :load_unit, :actor_id,
+                        :title, :epic_name
                     )
                     """,
                     demand_id=demand_id,
@@ -64,6 +70,8 @@ class DemandRepository:
                     load_amount=load_amount,
                     load_unit=load_unit,
                     actor_id=actor_id,
+                    title=title,
+                    epic_name=epic,
                 )
                 connection.commit()
                 return self._record(
@@ -76,6 +84,8 @@ class DemandRepository:
                         load_amount,
                         load_unit,
                         actor_id,
+                        title,
+                        epic,
                     )
                 )
         except Exception:
@@ -92,7 +102,8 @@ class DemandRepository:
                 cursor.execute(
                     """
                     SELECT DEMAND_ID, PROJECT_ID, SKILL_ID, PROFICIENCY_LEVEL,
-                           PERIOD_START, LOAD_AMOUNT, LOAD_UNIT, ACTOR_ID
+                           PERIOD_START, LOAD_AMOUNT, LOAD_UNIT, ACTOR_ID,
+                           TITLE, EPIC_NAME
                       FROM VSK_PROJECT_DEMANDS
                      WHERE PROJECT_ID = :project_id
                      ORDER BY PERIOD_START, DEMAND_ID
@@ -113,7 +124,11 @@ class DemandRepository:
         load_amount: Decimal,
         load_unit: str,
         actor_id: str,
+        title: str | None = None,
+        epic: str | None = None,
     ) -> dict[str, object]:
+        title = self._clean(title)
+        epic = self._clean(epic)
         connection = self._connection_factory()
         try:
             with connection.cursor() as cursor:
@@ -135,6 +150,8 @@ class DemandRepository:
                            LOAD_AMOUNT = :load_amount,
                            LOAD_UNIT = :load_unit,
                            ACTOR_ID = :actor_id,
+                           TITLE = :title,
+                           EPIC_NAME = :epic_name,
                            UPDATED_AT = SYSTIMESTAMP
                      WHERE DEMAND_ID = :demand_id
                        AND PROJECT_ID = :project_id
@@ -147,6 +164,8 @@ class DemandRepository:
                     load_amount=load_amount,
                     load_unit=load_unit,
                     actor_id=actor_id,
+                    title=title,
+                    epic_name=epic,
                 )
                 if cursor.rowcount == 0:
                     raise DemandError("DEMAND_NOT_FOUND", 404)
@@ -161,6 +180,8 @@ class DemandRepository:
                         load_amount,
                         load_unit,
                         actor_id,
+                        title,
+                        epic,
                     )
                 )
         except Exception:
@@ -168,6 +189,33 @@ class DemandRepository:
             raise
         finally:
             connection.close()
+
+    def delete(self, demand_id: str, project_id: str) -> None:
+        connection = self._connection_factory()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    DELETE FROM VSK_PROJECT_DEMANDS
+                     WHERE DEMAND_ID = :demand_id
+                       AND PROJECT_ID = :project_id
+                    """,
+                    demand_id=demand_id,
+                    project_id=project_id,
+                )
+                if cursor.rowcount == 0:
+                    raise DemandError("DEMAND_NOT_FOUND", 404)
+                connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    @staticmethod
+    def _clean(value: str | None) -> str | None:
+        stripped = value.strip() if value else ""
+        return stripped or None
 
     def _validate(
         self,
@@ -226,6 +274,8 @@ class DemandRepository:
             "load_amount": row[5],
             "load_unit": row[6],
             "actor_id": row[7],
+            "title": row[8],
+            "epic": row[9],
         }
 
     @staticmethod

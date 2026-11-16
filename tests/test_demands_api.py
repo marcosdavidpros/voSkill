@@ -50,6 +50,69 @@ def test_demand_routes_create_list_and_update_rows() -> None:
     assert updated.json()["proficiency_level"] == 4
     assert updated.json()["load_amount"] == 32
 
+def test_demand_routes_carry_title_and_epic_and_delete_rows() -> None:
+    repository = MemoryDemandRepository()
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_demand_repository] = lambda: repository
+    payload = {
+        "skill_id": "SKILL-1",
+        "proficiency_level": 3,
+        "period": "2026-01",
+        "load_amount": 40,
+        "load_unit": "hours",
+        "title": "Integra\u00e7\u00e3o com fila",
+        "epic": "Pagamentos",
+    }
+
+    try:
+        created = _request("POST", "/projects/P-001/demands", payload)
+        listed = _request("GET", "/projects/P-001/demands")
+        deleted = _request("DELETE", "/projects/P-001/demands/D-001")
+        missing = _request("DELETE", "/projects/P-001/demands/D-001")
+        after = _request("GET", "/projects/P-001/demands")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert created.status_code == 201
+    assert created.json()["title"] == "Integra\u00e7\u00e3o com fila"
+    assert created.json()["epic"] == "Pagamentos"
+    assert listed.json()[0]["epic"] == "Pagamentos"
+    assert deleted.status_code == 204
+    assert missing.status_code == 404
+    assert missing.json()["detail"]["code"] == "DEMAND_NOT_FOUND"
+    assert after.json() == []
+
+
+def test_demand_title_and_epic_are_optional_and_length_limited() -> None:
+    repository = MemoryDemandRepository()
+    app.dependency_overrides[get_actor_id] = lambda: "U-001"
+    app.dependency_overrides[get_demand_repository] = lambda: repository
+    payload = {
+        "skill_id": "SKILL-1",
+        "proficiency_level": 3,
+        "period": "2026-01",
+        "load_amount": 40,
+        "load_unit": "hours",
+    }
+
+    try:
+        without_labels = _request("POST", "/projects/P-001/demands", payload)
+        too_long = _request("POST", "/projects/P-001/demands", {**payload, "title": "x" * 201})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert without_labels.status_code == 201
+    assert without_labels.json()["title"] is None
+    assert without_labels.json()["epic"] is None
+    assert too_long.status_code == 422
+
+
+def test_demand_delete_requires_authenticated_actor() -> None:
+    response = _request("DELETE", "/projects/P-001/demands/D-001")
+
+    assert response.status_code == 401
+
+
 def test_demand_api_preserves_repository_error_code() -> None:
     class RejectingRepository:
         def create(self, **values: object) -> dict:

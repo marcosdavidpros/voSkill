@@ -5,6 +5,7 @@ import {
   fetchAuthenticatedPrincipal,
   fetchRiskPanel,
   fetchOptimizationRuns,
+  fetchPeople,
   fetchScenarios,
   fetchSkills,
   saveCriticalSkillThreshold,
@@ -20,6 +21,7 @@ import ComparisonPanel from "./ComparisonPanel";
 import CompetencyPanel from "./CompetencyPanel";
 import DecisionSupportPanel from "./DecisionSupportPanel";
 import LoginPanel from "./LoginPanel";
+import OperationalPlanPanel from "./OperationalPlanPanel";
 import OptimizationPanel from "./OptimizationPanel";
 import ProjectPanel from "./ProjectPanel";
 import RiskPanel from "./RiskPanel";
@@ -43,6 +45,7 @@ export default function App() {
   const [scenarios, setScenarios] = useState<ScenarioOption[]>([]);
   const [skillNames, setSkillNames] = useState<Record<string, string>>({});
   const [runs, setRuns] = useState<OptimizationRunSummary[]>([]);
+  const [personNames, setPersonNames] = useState<Record<string, string>>({});
   const [competencyMap, setCompetencyMap] = useState<CompetencyMap | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -78,9 +81,10 @@ export default function App() {
   }
 
   async function refreshScenarios(preferredId?: string) {
-    const [loaded, skills] = await Promise.all([fetchScenarios().catch(() => []), fetchSkills().catch(() => [])]);
+    const [loaded, skills, people] = await Promise.all([fetchScenarios().catch(() => []), fetchSkills().catch(() => []), fetchPeople().catch(() => [])]);
     const options = Array.isArray(loaded) ? loaded : [];
     setScenarios(options);
+    setPersonNames(Array.isArray(people) ? Object.fromEntries(people.map((item) => [item.person_id, item.display_name])) : {});
     setSkillNames(Array.isArray(skills) ? Object.fromEntries(skills.map((skill) => [skill.skill_id, skill.skill_name])) : {});
     const selected = options.find((option) => option.scenario_id === preferredId) ?? options[0];
     setScenarioId(selected?.scenario_id ?? "");
@@ -386,6 +390,7 @@ export default function App() {
             />
           </>
         )}
+        <OperationalPlanPanel runs={runs} skillNames={skillNames} personNames={personNames} />
         <DecisionSupportPanel runs={runs} />
         <ComparisonPanel scenarios={scenarios} runs={runs} />
         <CompetencyPanel />

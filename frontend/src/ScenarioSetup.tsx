@@ -177,8 +177,8 @@ export default function ScenarioSetup({ onCreated }: ScenarioSetupProps) {
           {demands.length === 0 ? <p>Nenhuma demanda no projeto. Cadastre demandas antes de montar o cenário.</p> : <div className="scenario-demands">
             <h3>Demandas do projeto</h3>
             <p>Horas que o projeto precisa de cada skill, por mês. O cenário-base compara essas demandas com a carga horária das pessoas selecionadas abaixo.</p>
-            <table><thead><tr><th>Skill</th><th>Nível exigido</th><th>Mês</th><th>Carga</th></tr></thead>
-              <tbody>{demands.map((demand) => <tr key={demand.demand_id}><td>{skillNames[demand.skill_id] ? `${skillNames[demand.skill_id]} (${demand.skill_id})` : demand.skill_id}</td><td>{demand.proficiency_level}</td><td>{demand.period}</td><td>{demand.load_amount} {demand.load_unit === "hours" ? "h" : demand.load_unit}</td></tr>)}</tbody></table>
+            <table><thead><tr><th>Épico / tarefa</th><th>Skill</th><th>Nível exigido</th><th>Mês</th><th>Carga</th></tr></thead>
+              <tbody>{demands.map((demand) => <tr key={demand.demand_id}><td>{[demand.epic, demand.title].filter(Boolean).join(" · ") || "—"}</td><td>{skillNames[demand.skill_id] ? `${skillNames[demand.skill_id]} (${demand.skill_id})` : demand.skill_id}</td><td>{demand.proficiency_level}</td><td>{demand.period}</td><td>{demand.load_amount} {demand.load_unit === "hours" ? "h" : demand.load_unit}</td></tr>)}</tbody></table>
           </div>}
           <fieldset disabled={busy}><legend>Participantes</legend>
             {people.map((person) => <div className="scenario-participant" key={person.person_id}>

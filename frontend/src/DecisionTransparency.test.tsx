@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -117,9 +117,10 @@ describe("decision transparency", () => {
     expect(await screen.findByText("Origem MANUAL · Revisada em 2026-11-09")).toBeInTheDocument();
     expect(screen.getByText("Fonte JAVA · Relação REL-001")).toBeInTheDocument();
 
-    await screen.findByRole("option", { name: /Atlas · Baseline · / });
-    await user.selectOptions(screen.getByRole("combobox", { name: "Execução" }), "RUN-001");
-    await user.selectOptions(screen.getByRole("combobox", { name: "Alternativa" }), "A-001");
+    const lookup = await screen.findByRole("region", { name: "Explicação da alternativa" });
+    await within(lookup).findByRole("option", { name: /Atlas · Baseline · / });
+    await user.selectOptions(within(lookup).getByRole("combobox", { name: "Execução" }), "RUN-001");
+    await user.selectOptions(within(lookup).getByRole("combobox", { name: "Alternativa" }), "A-001");
     await user.click(screen.getByRole("button", { name: "Consultar explicação" }));
 
     expect(await screen.findByText("Lacuna ponderada de competência")).toBeInTheDocument();

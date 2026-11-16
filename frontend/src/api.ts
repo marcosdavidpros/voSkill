@@ -48,6 +48,8 @@ export type ProjectDemand = {
   load_amount: number;
   load_unit: string;
   actor_id: string;
+  title?: string | null;
+  epic?: string | null;
 };
 
 export type BaseScenario = {
@@ -86,7 +88,14 @@ export type OptimizationRun = {
     }[];
     rejected_alternatives: {
       alternative_id: string;
-      violations: { code: string; constraint_id: string }[];
+      violations: {
+        code: string;
+        constraint_id: string;
+        person_id?: string;
+        period?: string;
+        assigned_hours?: number | string;
+        available_hours?: number | string;
+      }[];
     }[];
     run_metadata: {
       snapshot_id: string;
@@ -96,7 +105,7 @@ export type OptimizationRun = {
   };
 };
 
-async function catalogRequest<T>(path: string, method: "GET" | "POST" | "PUT", payload?: object): Promise<T> {
+async function catalogRequest<T>(path: string, method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", payload?: object): Promise<T> {
   const response = await fetch(`/api/${path}`, {
     method,
     credentials: "include",
@@ -106,6 +115,7 @@ async function catalogRequest<T>(path: string, method: "GET" | "POST" | "PUT", p
     const body = await response.json().catch(() => null);
     throw new Error(body?.detail?.code ?? `HTTP_${response.status}`);
   }
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
@@ -135,6 +145,87 @@ export type OptimizationRunSummary = {
 
 export function fetchOptimizationRuns(): Promise<OptimizationRunSummary[]> {
   return catalogRequest("optimization-runs", "GET");
+}
+
+export type OperationalAssignment = {
+  demand_id: string;
+  title: string | null;
+  epic: string | null;
+  skill_id: string;
+  period: string;
+  load_amount: number;
+  required_level: number;
+  person_id: string;
+  person_level: number;
+  status: "ok" | "below_level" | "no_competency";
+};
+
+export type OperationalSlot = {
+  person_id: string;
+  period: string;
+  assigned_hours: number;
+  available_hours: number | null;
+  utilization: number | null;
+  status: "ok" | "overloaded" | "no_availability";
+  excess_hours: number;
+};
+
+export type OperationalIssue = {
+  code: "overload" | "no_availability" | "below_level" | "no_competency";
+  person_id: string;
+  period: string;
+  assigned_hours?: number;
+  available_hours?: number;
+  excess_hours?: number;
+  demand_id?: string;
+  title?: string | null;
+  epic?: string | null;
+  skill_id?: string;
+  person_level?: number;
+  required_level?: number;
+};
+
+export type OperationalPlan = {
+  alternative_id: string;
+  assignments: OperationalAssignment[];
+  slots: OperationalSlot[];
+  issues: OperationalIssue[];
+  executable: boolean;
+  summary: {
+    tasks: number;
+    tasks_ok: number;
+    tasks_below_level: number;
+    tasks_without_competency: number;
+    overloaded_slots: number;
+    unavailable_slots: number;
+    excess_hours: number;
+    peak_utilization: number;
+    skill_gap_hours: number | null;
+  };
+};
+
+export type UncoveredDemand = {
+  demand_id: string;
+  title: string | null;
+  epic: string | null;
+  skill_id: string;
+  period: string;
+  load_amount: number;
+  required_level: number;
+  best_level: number;
+};
+
+export type OperationalPlans = {
+  run_id: string;
+  snapshot_id: string | null;
+  recommended_alternative_id: string | null;
+  recommendation_rule: string[];
+  uncovered_demands: UncoveredDemand[];
+  plans: OperationalPlan[];
+};
+
+export function fetchOperationalPlans(runId: string): Promise<OperationalPlans> {
+  return catalogRequest(`optimization-runs/${encodeURIComponent(runId)}/operational-plan`, "GET");
 }
 
 export function runLabel(run: OptimizationRunSummary): string {
@@ -172,14 +263,26 @@ export function fetchProjectDemands(projectId: string): Promise<ProjectDemand[]>
   return catalogRequest(`projects/${encodeURIComponent(projectId)}/demands`, "GET");
 }
 
-export function createProjectDemand(projectId: string, demand: {
+export type DemandInput = {
   skill_id: string;
   proficiency_level: number;
   period: string;
   load_amount: number;
   load_unit: "hours";
-}): Promise<ProjectDemand> {
+  title?: string;
+  epic?: string;
+};
+
+export function createProjectDemand(projectId: string, demand: DemandInput): Promise<ProjectDemand> {
   return catalogRequest(`projects/${encodeURIComponent(projectId)}/demands`, "POST", demand);
+}
+
+export function updateProjectDemand(projectId: string, demandId: string, demand: DemandInput): Promise<ProjectDemand> {
+  return catalogRequest(`projects/${encodeURIComponent(projectId)}/demands/${encodeURIComponent(demandId)}`, "PATCH", demand);
+}
+
+export function deleteProjectDemand(projectId: string, demandId: string): Promise<void> {
+  return catalogRequest(`projects/${encodeURIComponent(projectId)}/demands/${encodeURIComponent(demandId)}`, "DELETE");
 }
 
 export function createBaseScenario(projectId: string, scenarioName: string, participants: {

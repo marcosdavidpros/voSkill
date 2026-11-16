@@ -307,4 +307,17 @@ tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
   border: 1px solid #203f39; border-radius: 5px; cursor: pointer;
 }
 .login-panel button:disabled { opacity: 0.6; cursor: not-allowed; }
-.login-panel [role="alert"] { margin: 0; color: #742e21; }
+.login-panel [role="alert"] { margin: 0; color: #742e21; }.epic-row th { padding: 10px 12px; text-align: left; color: var(--ink); background: #e6ece8; font-size: 13px; }
+.project-section td button { min-height: 32px; padding: 4px 10px; font-size: 12px; }
+.plan-section { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--line); }
+.plan-run-label { display: grid; gap: 6px; max-width: 520px; margin: 12px 0; color: var(--ink); font-size: 13px; }
+.plan-run-label select { min-height: 40px; padding: 8px 10px; color: var(--ink); background: var(--surface); border: 1px solid #aebbb4; border-radius: 5px; font: inherit; }
+.plan-recommendation, .plan-alert { margin: 16px 0; padding: 14px 16px; border-left: 4px solid #126b59; background: var(--surface); border-radius: 5px; }
+.plan-alert { border-left-color: #a1521f; }
+.plan-recommendation h3, .plan-alert h3, .plan-detail h3 { margin: 0 0 6px; font-size: 15px; }
+.plan-detail h3 { margin-top: 22px; }
+.plan-section table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.plan-section th, .plan-section td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+.plan-section tr[aria-selected="true"] { background: #e6ece8; }
+.plan-risk td, .plan-risk th { color: #742e21; }
+.plan-error { color: #742e21; }

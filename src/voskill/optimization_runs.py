@@ -115,6 +115,28 @@ class OptimizationRunRepository:
                 }
         finally:
             connection.close()
+    def get_scenario_snapshot(self, snapshot_id: str) -> dict[str, object]:
+        connection = self._connection_factory()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT SNAPSHOT_JSON
+                      FROM VSK_SCENARIO_SNAPSHOTS
+                     WHERE SNAPSHOT_ID = :snapshot_id
+                    """,
+                    snapshot_id=snapshot_id,
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    raise OptimizationRunError("SNAPSHOT_NOT_FOUND", 404)
+                snapshot = _json_value(row[0])
+                if not isinstance(snapshot, dict):
+                    raise OptimizationRunError("SNAPSHOT_NOT_FOUND", 404)
+                return snapshot
+        finally:
+            connection.close()
+
     def list_runs(self, actor_id: str, can_audit: bool, limit: int = 50) -> list[dict[str, object]]:
         connection = self._connection_factory()
         try:

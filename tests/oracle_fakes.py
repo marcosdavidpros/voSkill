@@ -22,6 +22,7 @@ class FakeCursor:
         self.current_rows: list[tuple] = []
         self.insert_params: dict | None = None
         self.update_params: dict | None = None
+        self.delete_params: dict | None = None
         self.scenario_insert_params: dict | None = None
         self.scenario_records: list[tuple] = []
         self.competency_rows: list[tuple] = []
@@ -97,6 +98,8 @@ class FakeCursor:
             self.insert_params = bound
         elif normalized.startswith("UPDATE VSK_PROJECT_DEMANDS"):
             self.update_params = bound
+        elif normalized.startswith("DELETE FROM VSK_PROJECT_DEMANDS"):
+            self.delete_params = bound
         elif normalized.startswith("INSERT INTO VSK_PERSON_COMPETENCIES"):
             self.competency_insert_params = bound
         elif normalized.startswith("INSERT INTO VSK_SKILL_SUGGESTIONS"):

@@ -203,9 +203,9 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="wordmark" href="#main" aria-label="voSkill, ir ao conteúdo">
+        <a className="wordmark" href="#main" aria-label="Betsalel, ir ao conteúdo">
           <img className="wordmark-logo" src="/images/vivo-logo-branco.png" alt="" />
-          <span>voSkill</span>
+          <span>Betsalel</span>
         </a>
         <nav className="main-nav" aria-label="Menu principal">
           {views.map((item) => (

@@ -1,6 +1,6 @@
-# voSkill
+# Betsalel
 
-O voSkill apoia o planejamento de competências: permite analisar cobertura e riscos,
+O Betsalel apoia o planejamento de competências: permite analisar cobertura e riscos,
 comparar cenários e examinar alternativas de otimização. Os resultados são apoio à
 decisão e não aplicam uma alocação automaticamente.
 
@@ -50,7 +50,7 @@ fica em `http://127.0.0.1:8000/docs`.
 
 ### Autenticação corporativa
 
-O voSkill autentica diretamente no diretório corporativo via LDAPS e consulta o
+O Betsalel autentica diretamente no diretório corporativo via LDAPS e consulta o
 Oracle do Portal para autorização; não chama o Portal em runtime. A matrícula
 normalizada em maiúsculas é o `actor_id` registrado nas operações.
 
@@ -60,7 +60,7 @@ A autorização consulta `PARAM_USUARIOS`, `PARAM_USUARIO_PERFIS`, `PARAM_PERFIS
 
 Há duas conexões Oracle distintas:
 
-- `ORACLE_USER`, `ORACLE_PASSWORD`, `ORACLE_DSN`: schema do voSkill, com as migrations
+- `ORACLE_USER`, `ORACLE_PASSWORD`, `ORACLE_DSN`: schema do Betsalel, com as migrations
 	`VSK_*`.
 - `PORTAL_ORACLE_USER`, `PORTAL_ORACLE_PASSWORD`, `PORTAL_ORACLE_DSN`: schema Portal,
 	usado para validar `PARAM_USUARIOS`, perfis e a permissão da tela `VOSKILL`, além de
@@ -102,7 +102,7 @@ com a matrícula e senha corporativas. `GET /auth/me` confirma a sessão; `POST
 /auth/logout` encerra o cookie. O cookie é `HttpOnly`, `SameSite=Lax`, assinado e curto;
 a senha não é guardada nele.
 
-`PODE_VISUALIZAR` habilita leitura global dos dados do voSkill. `PODE_EDITAR` permite
+`PODE_VISUALIZAR` habilita leitura global dos dados do Betsalel. `PODE_EDITAR` permite
 alterações e implica leitura. Uma sessão ausente, inválida ou expirada retorna `401`;
 um usuário sem acesso à tela `VOSKILL` recebe erro de autenticação; um usuário somente
 de leitura recebe `403` em gravações. Erros `AUTHENTICATION_UNAVAILABLE` indicam

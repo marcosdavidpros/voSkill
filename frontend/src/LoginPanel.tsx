@@ -6,7 +6,7 @@ type LoginPanelProps = {
 };
 
 const messages: Record<string, string> = {
-  INVALID_CREDENTIALS: "Matrícula, senha ou permissão do voSkill inválida.",
+  INVALID_CREDENTIALS: "Matrícula, senha ou permissão do Betsalel inválida.",
   AUTHENTICATION_UNAVAILABLE: "Autenticação indisponível. Tente novamente mais tarde.",
 };
 
@@ -35,7 +35,7 @@ export default function LoginPanel({ error, onLogin }: LoginPanelProps) {
     <section className="login-card" aria-labelledby="login-heading">
       <div className="login-card-header">
         <img className="login-logo" src="/images/vivo-logo-branco.png" alt="Vivo" />
-        <h1 id="login-heading">Entrar no voSkill</h1>
+        <h1 id="login-heading">Entrar no Betsalel</h1>
         <p>Planejamento de competências</p>
       </div>
       <form onSubmit={submit}>
@@ -44,7 +44,7 @@ export default function LoginPanel({ error, onLogin }: LoginPanelProps) {
         {(localError || error) && <p role="alert">{localError ?? error}</p>}
         <button type="submit" disabled={busy || !username.trim() || !password}>{busy ? "Autenticando…" : "Entrar"}</button>
       </form>
-      <p className="login-card-footer">© {new Date().getFullYear()} voSkill. Todos os direitos reservados.</p>
+      <p className="login-card-footer">© {new Date().getFullYear()} Betsalel. Todos os direitos reservados.</p>
     </section>
   );
 }

@@ -1,11 +1,11 @@
 ---
 number: 4
-title: Modularizar voSkill por domínio
+title: Modularizar Betsalel por domínio
 date: 2026-11-09
 status: Accepted
 ---
 
-# ADR-0004: Modularizar voSkill por domínio
+# ADR-0004: Modularizar Betsalel por domínio
 
 ## Status
 

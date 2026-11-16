@@ -1,11 +1,11 @@
 ---
 number: 1
-title: Stack candidata do MVP voSkill
+title: Stack candidata do MVP Betsalel
 date: 2026-11-06
 status: Accepted
 ---
 
-# ADR-0001: Stack candidata do MVP voSkill
+# ADR-0001: Stack candidata do MVP Betsalel
 
 ## Status
 

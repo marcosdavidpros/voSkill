@@ -1,11 +1,11 @@
 ---
 number: 6
-title: Autenticação corporativa própria do voSkill
+title: Autenticação corporativa própria do Betsalel
 date: 2026-11-12
 status: Accepted
 ---
 
-# ADR-0006: Autenticação corporativa própria do voSkill
+# ADR-0006: Autenticação corporativa própria do Betsalel
 
 ## Status
 
@@ -17,7 +17,7 @@ O dashboard precisa de identidade para exibir o mapa e registrar alterações. H
 
 ## Decision
 
-Substituir o bypass local por autenticação própria do voSkill: bind matrícula/senha via LDAPS com validação de certificado; exigir usuário ativo, perfil ativo/não expirado e tela VOSKILL ativa no Oracle do Portal; usar PODE_VISUALIZAR para leitura e PODE_EDITAR para escrita; usar sessão HttpOnly, SameSite e TTL curto; negar por padrão.
+Substituir o bypass local por autenticação própria do Betsalel: bind matrícula/senha via LDAPS com validação de certificado; exigir usuário ativo, perfil ativo/não expirado e tela VOSKILL ativa no Oracle do Portal; usar PODE_VISUALIZAR para leitura e PODE_EDITAR para escrita; usar sessão HttpOnly, SameSite e TTL curto; negar por padrão.
 
 ## Consequences
 

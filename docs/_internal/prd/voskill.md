@@ -1,4 +1,4 @@
-# PRD — voSkill: Planejamento Evolutivo de Competências e Alocação de Equipes
+# PRD — Betsalel: Planejamento Evolutivo de Competências e Alocação de Equipes
 
 **Fase:** PRD (ANALYZE)  
 **Versão:** 0.1  
@@ -9,7 +9,7 @@
 
 Equipes de desenvolvimento precisam atender demandas de projetos que mudam ao longo do tempo, desenvolver competências e reduzir dependências em especialistas. Hoje, informações sobre skills, interesses, experiência e demandas podem estar dispersas e não são suficientes, por si só, para comparar planos de alocação e capacitação com seus trade-offs.
 
-O voSkill deve apoiar coordenadores na avaliação de estratégias para os próximos 6 a 12 meses. Em vez de escolher automaticamente uma pessoa para um projeto, o sistema apresenta alternativas de alocação, treinamento, mentoria e rotação, comparadas por objetivos conflitantes e acompanhadas de evidências e explicações. As decisões permanecem sob responsabilidade humana.
+O Betsalel deve apoiar coordenadores na avaliação de estratégias para os próximos 6 a 12 meses. Em vez de escolher automaticamente uma pessoa para um projeto, o sistema apresenta alternativas de alocação, treinamento, mentoria e rotação, comparadas por objetivos conflitantes e acompanhadas de evidências e explicações. As decisões permanecem sob responsabilidade humana.
 
 **Proposta de valor:** tornar explícitos os efeitos de diferentes planos sobre cobertura de competências, desenvolvimento das pessoas, capacidade futura, carga, risco de conhecimento e custo.
 

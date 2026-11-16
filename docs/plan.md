@@ -1,4 +1,4 @@
-# voSkill - Plano de Entrega do MVP
+# Betsalel - Plano de Entrega do MVP
 
 **Status:** proposta de planejamento; revisar apos o primeiro sprint
 

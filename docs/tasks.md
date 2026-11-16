@@ -1,4 +1,4 @@
-# voSkill - Catalogo Detalhado de Tasks do MVP
+# Betsalel - Catalogo Detalhado de Tasks do MVP
 
 **Status:** snapshot do grafo em 2026-11-08
 **Fonte de verdade:** nodes, ACs, tags e edges em `workflow-graph/graph.db`. Este documento e uma visao humana; atualizar junto com o grafo.

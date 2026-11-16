@@ -1,1 +1,1 @@
-"""voSkill application package."""
+"""Betsalel application package."""

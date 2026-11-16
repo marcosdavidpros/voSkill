@@ -149,7 +149,7 @@ describe("competency map", () => {
     render(<App />);
 
     await screen.findByRole("region", { name: "Tabela de cobertura de competências" });
-    const wordmark = screen.getByRole("link", { name: "voSkill, ir ao conteúdo" });
+    const wordmark = screen.getByRole("link", { name: "Betsalel, ir ao conteúdo" });
     const scenarioInput = screen.getByRole("combobox", { name: "Cenário" });
     const loadButton = screen.getByRole("button", { name: "Carregar mapa" });
     const signOutButton = screen.getByRole("button", { name: "Sair" });
@@ -369,7 +369,7 @@ describe("competency map", () => {
     })));
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "Entrar no voSkill" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Entrar no Betsalel" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Vivo" })).toHaveAttribute("src", "/images/vivo-logo-branco.png");
     expect(screen.queryByRole("navigation", { name: "Menu principal" })).not.toBeInTheDocument();
   });

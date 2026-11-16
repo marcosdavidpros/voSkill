@@ -1,4 +1,4 @@
-# Manual de Teste do MVP voSkill
+# Manual de Teste do MVP Betsalel
 
 Este roteiro percorre o fluxo local de cadastro até uma execução reproduzível do
 otimizador. Use dados fictícios ou autorizados para teste. Os exemplos de IDs abaixo
@@ -11,14 +11,14 @@ são ilustrativos; use os IDs que a API devolver para os registros criados.
    colunas `TITLE` e `EPIC_NAME` às demandas e precisa rodar antes de subir esta
    versão da API). Não as reexecute
    em uma base que já tenha os objetos.
-2. Preencha o `.env` local com as credenciais do schema voSkill (`ORACLE_*`), do
+2. Preencha o `.env` local com as credenciais do schema Betsalel (`ORACLE_*`), do
    schema Portal (`PORTAL_ORACLE_*`), LDAP e sessão. Os dois acessos Oracle são
    distintos. Não compartilhe o `.env`, senhas ou `VOSKILL_SESSION_SECRET`.
    No mínimo, confira `ORACLE_USER`, `ORACLE_PASSWORD`, `ORACLE_DSN`, `LDAP_URL`,
    `LDAP_DOMAIN`, `PORTAL_ORACLE_USER`, `PORTAL_ORACLE_PASSWORD`,
    `PORTAL_ORACLE_DSN` e `VOSKILL_SESSION_SECRET`.
 3. O Portal usa `LDAP_DOMAIN` antes da matrícula. `LDAP_TIMEOUT` e
-   `LDAP_CONNECT_TIMEOUT` são informados em milissegundos; o voSkill converte para
+   `LDAP_CONNECT_TIMEOUT` são informados em milissegundos; o Betsalel converte para
    segundos. `LDAP_FOLLOW_REFERRALS` aceita `true` ou `false`.
 4. `LDAP_BASE_DN` é mantida por compatibilidade com o Portal, mas o login atual faz
    bind direto e não pesquisa por essa base.
@@ -42,7 +42,7 @@ diagnóstico da API, `http://127.0.0.1:8000/health` deve responder `{"status":"o
 
 ## 2. Entrar
 
-1. Informe matrícula e senha corporativas no formulário **Entrar no voSkill** (tela
+1. Informe matrícula e senha corporativas no formulário **Entrar no Betsalel** (tela
    de login com a identidade visual Vivo, no mesmo padrão do Portal).
 2. O login valida a senha via LDAP e verifica usuário ativo, perfil ativo/não expirado
    e permissão da tela `VOSKILL` no Oracle do Portal.

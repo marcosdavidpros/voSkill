@@ -1,4 +1,4 @@
-# Betsalel - Catalogo Detalhado de Tasks do MVP
+# NorteiaSkills - Catalogo Detalhado de Tasks do MVP
 
 **Status:** snapshot do grafo em 2026-11-08
 **Fonte de verdade:** nodes, ACs, tags e edges em `workflow-graph/graph.db`. Este documento e uma visao humana; atualizar junto com o grafo.
@@ -187,5 +187,6 @@
 
 - Sprint 2 depende do milestone do Sprint 1; suas tasks tambem dependem do milestone do Sprint 1. Sprint 3 depende do milestone do Sprint 2; suas tasks dependem do milestone do Sprint 2.
 - Epic 5 e post-MVP e esta bloqueado pelas dependencias aos Epics 1-4.
+- Epic 6 e post-MVP (`node_f3f0eee29e33`): Task 6.1 timeline de capacity (`node_305e1b73751e`), Task 6.2 ferias, ausencias e banco de horas (`node_30292d0c7ffb`), Task 6.3 impacto das ausencias no calculo (`node_0bc0a70be996`) e Task 6.4 KPIs de Lead Time e Cycle Time (`node_e96e581ddda4`). Depende dos Epics 1-4; a Task 6.4 depende tambem da Task 5.1 (Jira).
 - Nenhuma task foi executada; os planos de teste estao em backlog.
 - O plano nao assume uso de provider LLM especifico; a extracao deve ser validada com fixture deterministica e provider homologado conforme ADR-0001.

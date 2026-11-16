@@ -1,1 +1,1 @@
-"""Betsalel application package."""
+"""NorteiaSkills application package."""

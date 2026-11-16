@@ -1,4 +1,4 @@
-# Betsalel - Plano de Entrega do MVP
+# NorteiaSkills - Plano de Entrega do MVP
 
 **Status:** proposta de planejamento; revisar apos o primeiro sprint
 
@@ -12,6 +12,7 @@
 - As 22 tarefas de entrega estao majoritariamente em tamanho XP `XS` (20 tarefas) e `S` (2 tarefas). `estimateMinutes` nao esta preenchido e nao ha historico de throughput; por isso, tres sprints sao uma previsao inicial, nao uma data garantida.
 - Recalibrar capacidade e estimativas ao fim do Sprint 1 com dados reais de fluxo. A assistencia de IA entra na expectativa de produtividade, mas nao elimina revisao, testes ou integracao.
 - O Epic 5 e pos-MVP e fica fora destes sprints, bloqueado ate os Epics 1-4 terminarem e a baseline do piloto ser aprovada.
+- O Epic 6 (capacity da equipe, ausencias e KPIs de fluxo) tambem e pos-MVP e fica fora destes sprints; so a Task 6.4 (Lead Time e Cycle Time) depende da integracao com Jira do Epic 5.
 
 ## Sprint 1 - Fundamentos de dados, demandas e cenarios
 

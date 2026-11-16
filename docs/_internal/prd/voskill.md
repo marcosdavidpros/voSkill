@@ -1,4 +1,4 @@
-# PRD — Betsalel: Planejamento Evolutivo de Competências e Alocação de Equipes
+# PRD — NorteiaSkills: Planejamento Evolutivo de Competências e Alocação de Equipes
 
 **Fase:** PRD (ANALYZE)  
 **Versão:** 0.1  
@@ -9,7 +9,7 @@
 
 Equipes de desenvolvimento precisam atender demandas de projetos que mudam ao longo do tempo, desenvolver competências e reduzir dependências em especialistas. Hoje, informações sobre skills, interesses, experiência e demandas podem estar dispersas e não são suficientes, por si só, para comparar planos de alocação e capacitação com seus trade-offs.
 
-O Betsalel deve apoiar coordenadores na avaliação de estratégias para os próximos 6 a 12 meses. Em vez de escolher automaticamente uma pessoa para um projeto, o sistema apresenta alternativas de alocação, treinamento, mentoria e rotação, comparadas por objetivos conflitantes e acompanhadas de evidências e explicações. As decisões permanecem sob responsabilidade humana.
+O NorteiaSkills deve apoiar coordenadores na avaliação de estratégias para os próximos 6 a 12 meses. Em vez de escolher automaticamente uma pessoa para um projeto, o sistema apresenta alternativas de alocação, treinamento, mentoria e rotação, comparadas por objetivos conflitantes e acompanhadas de evidências e explicações. As decisões permanecem sob responsabilidade humana.
 
 **Proposta de valor:** tornar explícitos os efeitos de diferentes planos sobre cobertura de competências, desenvolvimento das pessoas, capacidade futura, carga, risco de conhecimento e custo.
 
@@ -217,6 +217,15 @@ Objetivo: tornar alternativas, dados de origem, incertezas e limitações compre
 **Epic 5 pós-MVP — Integrações e escalabilidade além do piloto**
 
 Epic 5 depende da conclusão dos Epics 1–4 e da aprovação da baseline de workload do piloto. Task 5.1 implementará conectores aprovados com contratos/mapeamentos versionados e consentimento; Task 5.2 medirá escalabilidade além do piloto a partir da baseline. Não iniciar integrações sem autorização e contratos de dados aprovados; não declarar conformidade de escala antes da medição.
+
+**Epic 6 pós-MVP — Capacity da equipe, ausências e KPIs de fluxo**
+
+Epic 6 depende da conclusão dos Epics 1–4; apenas a Task 6.4 depende também da integração com Jira (Task 5.1).
+
+- **Task 6.1, timeline de capacity:** depois de escolher uma alternativa para um cenário, a equipe fica alocada ao projeto. A timeline mostra por pessoa e mês a carga alocada, a disponibilidade e a capacidade livre, e informa até quando a equipe está alocada e quando volta a ter capacidade. Inclui o fluxo na tela para confirmar a alternativa escolhida, mantendo a decisão humana.
+- **Task 6.2, férias, ausências e banco de horas:** cadastro por pessoa e período de férias, ausências e ajustes de banco de horas positivos ou negativos. O tempo ausente reduz a disponibilidade líquida e não pode ser alocado a projetos. Ausências são dados pessoais sensíveis: guardar apenas o tipo, sem motivo em texto livre, com acesso controlado e sem PII em logs. A regra de sinal e de compensação do banco de horas precisa ser confirmada com o negócio.
+- **Task 6.3, impacto no cálculo e no projeto:** o otimizador e o plano operacional usam a disponibilidade líquida. O painel mostra horas perdidas por mês, meses que passam a ficar sobrecarregados e a variação da data até quando a equipe está alocada. Execuções já calculadas são sinalizadas como desatualizadas, sem alterar o resultado gravado.
+- **Task 6.4, KPIs de Lead Time e Cycle Time:** após a integração com Jira, calcular Lead Time (criação até conclusão) e Cycle Time (início do trabalho até conclusão) por projeto, equipe e período, com mediana, p85 e tendência. Os KPIs ficam no nível de equipe e projeto, sem ranking nem avaliação individual, e não exibem valor com amostra insuficiente.
 
 **Fora de escopo do MVP**
 

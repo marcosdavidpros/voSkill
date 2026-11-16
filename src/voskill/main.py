@@ -40,7 +40,7 @@ __all__ = [
     "handle_request_validation_error",
 ]
 
-app = FastAPI(title="Betsalel API")
+app = FastAPI(title="NorteiaSkills API")
 app.add_exception_handler(RequestValidationError, handle_request_validation_error)
 app.include_router(authentication_router.router)
 app.include_router(catalog_router.router)

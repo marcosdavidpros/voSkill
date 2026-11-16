@@ -1,11 +1,11 @@
 ---
 number: 4
-title: Modularizar Betsalel por domínio
+title: Modularizar NorteiaSkills por domínio
 date: 2026-11-09
 status: Accepted
 ---
 
-# ADR-0004: Modularizar Betsalel por domínio
+# ADR-0004: Modularizar NorteiaSkills por domínio
 
 ## Status
 

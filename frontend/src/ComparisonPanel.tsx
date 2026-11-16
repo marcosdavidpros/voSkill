@@ -3,14 +3,22 @@ import { useRef, useState } from "react";
 import {
   fetchAlternativeComparison,
   fetchScenarioComparison,
+  runLabel,
   type AlternativeComparison,
+  type OptimizationRunSummary,
   type ScenarioComparison,
+  type ScenarioOption,
 } from "./api";
 import { AlternativeComparisonResults, ScenarioComparisonResults } from "./ComparisonResults";
 
 type ComparisonTab = "scenarios" | "alternatives";
 
-export default function ComparisonPanel() {
+type ComparisonPanelProps = {
+  scenarios: ScenarioOption[];
+  runs: OptimizationRunSummary[];
+};
+
+export default function ComparisonPanel({ scenarios, runs }: ComparisonPanelProps) {
   const [activeTab, setActiveTab] = useState<ComparisonTab>("scenarios");
   const [firstScenarioId, setFirstScenarioId] = useState("");
   const [secondScenarioId, setSecondScenarioId] = useState("");
@@ -23,6 +31,7 @@ export default function ComparisonPanel() {
   const [loading, setLoading] = useState(false);
   const scenarioTab = useRef<HTMLButtonElement>(null);
   const alternativeTab = useRef<HTMLButtonElement>(null);
+  const alternativesOfRun = runs.find((run) => run.run_id === runId)?.alternative_ids ?? [];
 
   function handleTabKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -103,8 +112,14 @@ export default function ComparisonPanel() {
       {activeTab === "scenarios" ? (
         <div id="scenario-comparison-panel" role="tabpanel" aria-labelledby="scenario-comparison-tab" tabIndex={0}>
           <form className="comparison-form" onSubmit={submitScenarioComparison}>
-            <label htmlFor="scenario-base-id">Cenário base<input id="scenario-base-id" value={firstScenarioId} onChange={(event) => setFirstScenarioId(event.target.value)} /></label>
-            <label htmlFor="scenario-compare-id">Cenário para comparar<input id="scenario-compare-id" value={secondScenarioId} onChange={(event) => setSecondScenarioId(event.target.value)} /></label>
+            <label htmlFor="scenario-base-id">Cenário base<select id="scenario-base-id" value={firstScenarioId} onChange={(event) => setFirstScenarioId(event.target.value)} disabled={scenarios.length === 0}>
+              <option value="">{scenarios.length === 0 ? "Nenhum cenário criado" : "Selecione o cenário"}</option>
+              {scenarios.map((option) => <option key={option.scenario_id} value={option.scenario_id}>{option.project_name} · {option.scenario_name}</option>)}
+            </select></label>
+            <label htmlFor="scenario-compare-id">Cenário para comparar<select id="scenario-compare-id" value={secondScenarioId} onChange={(event) => setSecondScenarioId(event.target.value)} disabled={scenarios.length === 0}>
+              <option value="">{scenarios.length === 0 ? "Nenhum cenário criado" : "Selecione o cenário"}</option>
+              {scenarios.map((option) => <option key={option.scenario_id} value={option.scenario_id}>{option.project_name} · {option.scenario_name}</option>)}
+            </select></label>
             <button type="submit" disabled={loading || !firstScenarioId.trim() || !secondScenarioId.trim()}>
               {loading ? "Comparando…" : "Comparar cenários"}
             </button>
@@ -116,9 +131,18 @@ export default function ComparisonPanel() {
       ) : (
         <div id="alternative-comparison-panel" role="tabpanel" aria-labelledby="alternative-comparison-tab" tabIndex={0}>
           <form className="comparison-form" onSubmit={submitAlternativeComparison}>
-            <label htmlFor="comparison-run-id">ID da execução<input id="comparison-run-id" value={runId} onChange={(event) => setRunId(event.target.value)} /></label>
-            <label htmlFor="comparison-alt-one">Alternativa 1<input id="comparison-alt-one" value={firstAlternativeId} onChange={(event) => setFirstAlternativeId(event.target.value)} /></label>
-            <label htmlFor="comparison-alt-two">Alternativa 2<input id="comparison-alt-two" value={secondAlternativeId} onChange={(event) => setSecondAlternativeId(event.target.value)} /></label>
+            <label htmlFor="comparison-run-id">Execução<select id="comparison-run-id" value={runId} onChange={(event) => { setRunId(event.target.value); setFirstAlternativeId(""); setSecondAlternativeId(""); }} disabled={runs.length === 0}>
+              <option value="">{runs.length === 0 ? "Nenhuma execução salva" : "Selecione a execução"}</option>
+              {runs.map((run) => <option key={run.run_id} value={run.run_id}>{runLabel(run)}</option>)}
+            </select></label>
+            <label htmlFor="comparison-alt-one">Alternativa 1<select id="comparison-alt-one" value={firstAlternativeId} onChange={(event) => setFirstAlternativeId(event.target.value)} disabled={alternativesOfRun.length === 0}>
+              <option value="">Selecione a alternativa</option>
+              {alternativesOfRun.map((id) => <option key={id} value={id}>{id}</option>)}
+            </select></label>
+            <label htmlFor="comparison-alt-two">Alternativa 2<select id="comparison-alt-two" value={secondAlternativeId} onChange={(event) => setSecondAlternativeId(event.target.value)} disabled={alternativesOfRun.length === 0}>
+              <option value="">Selecione a alternativa</option>
+              {alternativesOfRun.map((id) => <option key={id} value={id}>{id}</option>)}
+            </select></label>
             <button type="submit" disabled={loading || !runId.trim() || !firstAlternativeId.trim() || !secondAlternativeId.trim()}>
               {loading ? "Comparando…" : "Comparar alternativas"}
             </button>

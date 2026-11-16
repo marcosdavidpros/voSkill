@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { createOptimizationRun, fetchOptimizerSnapshot, type OptimizationRun } from "./api";
+import { createOptimizationRun, fetchOptimizerSnapshot, type OptimizationRun, type ScenarioOption } from "./api";
 
 const metricLabels: Record<string, string> = {
   skill_gap_hours: "Lacuna ponderada de competência",
@@ -18,7 +18,14 @@ function explain(error: unknown): string {
   return messages[code] ?? code;
 }
 
-export default function OptimizationPanel({ scenarioId }: { scenarioId: string }) {
+type OptimizationPanelProps = {
+  scenarioId: string;
+  scenarios: ScenarioOption[];
+  onScenarioChange: (scenarioId: string) => void;
+  onRunCreated: () => void;
+};
+
+export default function OptimizationPanel({ scenarioId, scenarios, onScenarioChange, onRunCreated }: OptimizationPanelProps) {
   const [seed, setSeed] = useState("42");
   const [populationSize, setPopulationSize] = useState("20");
   const [generations, setGenerations] = useState("12");
@@ -35,6 +42,7 @@ export default function OptimizationPanel({ scenarioId }: { scenarioId: string }
     try {
       const snapshot = await fetchOptimizerSnapshot(scenarioId);
       setRun(await createOptimizationRun(snapshot, Number(seed), Number(populationSize), Number(generations)));
+      onRunCreated();
     } catch (caught) {
       setError(explain(caught));
     } finally {
@@ -48,8 +56,12 @@ export default function OptimizationPanel({ scenarioId }: { scenarioId: string }
   return (
     <section className="optimization-section" aria-labelledby="optimization-heading">
       <div className="section-heading"><div><p className="eyebrow">CÁLCULO</p><h2 id="optimization-heading">Otimização do cenário</h2></div></div>
-      <p className="scenario-meta">Cenário {scenarioId || "não selecionado"} · NSGA-II · execução local</p>
+      <p className="scenario-meta">NSGA-II · execução local</p>
       <form className="optimization-form" onSubmit={submit}>
+        <label>Cenário a calcular<select value={scenarioId} onChange={(event) => onScenarioChange(event.target.value)} disabled={busy || scenarios.length === 0}>
+          {scenarios.length === 0 && <option value="">Nenhum cenário criado</option>}
+          {scenarios.map((option) => <option key={option.scenario_id} value={option.scenario_id}>{option.project_name} · {option.scenario_name}</option>)}
+        </select></label>
         <label>Seed<input type="number" min="0" step="1" value={seed} onChange={(event) => setSeed(event.target.value)} required disabled={busy} /></label>
         <label>População<input type="number" min="2" max="10000" step="1" value={populationSize} onChange={(event) => setPopulationSize(event.target.value)} required disabled={busy} /></label>
         <label>Gerações<input type="number" min="1" max="10000" step="1" value={generations} onChange={(event) => setGenerations(event.target.value)} required disabled={busy} /></label>

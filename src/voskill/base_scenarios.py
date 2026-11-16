@@ -32,6 +32,25 @@ class BaseScenarioRepository:
         participants: Sequence[Mapping[str, object]],
         actor_id: str,
     ) -> dict[str, object]:
+        return self._save(None, project_id, scenario_name, participants, actor_id)
+
+    def update_base_scenario(
+        self,
+        scenario_id: str,
+        scenario_name: str,
+        participants: Sequence[Mapping[str, object]],
+        actor_id: str,
+    ) -> dict[str, object]:
+        return self._save(scenario_id, None, scenario_name, participants, actor_id)
+
+    def _save(
+        self,
+        editing_id: str | None,
+        project_id: str | None,
+        scenario_name: str,
+        participants: Sequence[Mapping[str, object]],
+        actor_id: str,
+    ) -> dict[str, object]:
         name = scenario_name.strip()
         if not name:
             raise ScenarioError("REQUIRED_SCENARIO_NAME", 422)
@@ -41,6 +60,33 @@ class BaseScenarioRepository:
         connection = self._connection_factory()
         try:
             with connection.cursor() as cursor:
+                if editing_id is not None:
+                    cursor.execute(
+                        """
+                        SELECT PROJECT_ID, SCENARIO_TYPE
+                          FROM VSK_SCENARIOS
+                         WHERE SCENARIO_ID = :scenario_id
+                        """,
+                        scenario_id=editing_id,
+                    )
+                    existing = cursor.fetchone()
+                    if existing is None:
+                        raise ScenarioError("SCENARIO_NOT_FOUND", 404)
+                    if str(existing[1]) != "BASE":
+                        raise ScenarioError("SCENARIO_NOT_EDITABLE", 422)
+                    project_id = str(existing[0])
+                    cursor.execute(
+                        """
+                        SELECT COUNT(*)
+                          FROM VSK_SCENARIOS
+                         WHERE BASE_SCENARIO_ID = :scenario_id
+                        """,
+                        scenario_id=editing_id,
+                    )
+                    alternatives = cursor.fetchone()
+                    if alternatives is not None and int(alternatives[0]) > 0:
+                        raise ScenarioError("SCENARIO_HAS_ALTERNATIVES", 409)
+
                 cursor.execute(
                     """
                     SELECT HORIZON_START, HORIZON_END, LOAD_UNIT
@@ -62,9 +108,11 @@ class BaseScenarioRepository:
                       FROM VSK_SCENARIOS
                      WHERE PROJECT_ID = :project_id
                        AND SCENARIO_NAME = :scenario_name
-                    """,
+                    """
+                    + ("                       AND SCENARIO_ID <> :editing_id\n" if editing_id else ""),
                     project_id=project_id,
                     scenario_name=name,
+                    **({"editing_id": editing_id} if editing_id else {}),
                 )
                 if cursor.fetchone() is not None:
                     raise ScenarioError("SCENARIO_ALREADY_EXISTS", 409)
@@ -134,7 +182,7 @@ class BaseScenarioRepository:
                     )
 
                 snapshot_id = str(uuid4())
-                scenario_id = str(uuid4())
+                scenario_id = editing_id or str(uuid4())
                 snapshot = build_snapshot(snapshot_id, profiles, demands)
                 snapshot_json, snapshot_sha256 = serialize_snapshot(snapshot)
                 created_at = datetime.now(UTC)
@@ -155,23 +203,35 @@ class BaseScenarioRepository:
                     created_by=actor_id,
                     created_at=created_at,
                 )
-                cursor.execute(
-                    """
-                    INSERT INTO VSK_SCENARIOS (
-                        SCENARIO_ID, PROJECT_ID, SNAPSHOT_ID, BASE_SCENARIO_ID,
-                        SCENARIO_TYPE, SCENARIO_NAME, DELTAS_JSON, ACTOR_ID, CREATED_AT
-                    ) VALUES (
-                        :scenario_id, :project_id, :snapshot_id, NULL,
-                        'BASE', :scenario_name, '{}', :actor_id, :created_at
+                if editing_id is None:
+                    cursor.execute(
+                        """
+                        INSERT INTO VSK_SCENARIOS (
+                            SCENARIO_ID, PROJECT_ID, SNAPSHOT_ID, BASE_SCENARIO_ID,
+                            SCENARIO_TYPE, SCENARIO_NAME, DELTAS_JSON, ACTOR_ID, CREATED_AT
+                        ) VALUES (
+                            :scenario_id, :project_id, :snapshot_id, NULL,
+                            'BASE', :scenario_name, '{}', :actor_id, :created_at
+                        )
+                        """,
+                        scenario_id=scenario_id,
+                        project_id=project_id,
+                        snapshot_id=snapshot_id,
+                        scenario_name=name,
+                        actor_id=actor_id,
+                        created_at=created_at,
                     )
-                    """,
-                    scenario_id=scenario_id,
-                    project_id=project_id,
-                    snapshot_id=snapshot_id,
-                    scenario_name=name,
-                    actor_id=actor_id,
-                    created_at=created_at,
-                )
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE VSK_SCENARIOS
+                           SET SNAPSHOT_ID = :snapshot_id, SCENARIO_NAME = :scenario_name
+                         WHERE SCENARIO_ID = :scenario_id
+                        """,
+                        scenario_id=scenario_id,
+                        snapshot_id=snapshot_id,
+                        scenario_name=name,
+                    )
                 connection.commit()
                 return {
                     "scenario_id": scenario_id,
@@ -189,6 +249,34 @@ class BaseScenarioRepository:
         except Exception:
             connection.rollback()
             raise
+        finally:
+            connection.close()
+
+    def list_scenarios(self) -> list[dict[str, object]]:
+        connection = self._connection_factory()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT S.SCENARIO_ID, S.SCENARIO_NAME, S.SCENARIO_TYPE,
+                           S.PROJECT_ID, P.PROJECT_NAME
+                      FROM VSK_SCENARIOS S
+                      JOIN VSK_PROJECTS P ON P.PROJECT_ID = S.PROJECT_ID
+                     ORDER BY P.PROJECT_NAME, S.CREATED_AT DESC, S.SCENARIO_ID
+                    """
+                )
+                return [
+                    {
+                        "scenario_id": str(row[0]),
+                        "scenario_name": str(row[1]),
+                        "scenario_type": str(row[2]),
+                        "project_id": str(row[3]),
+                        "project_name": str(row[4]),
+                    }
+                    for row in cursor.fetchall()
+                ]
+        except oracledb.Error as error:
+            raise ScenarioError("SCENARIO_LIST_FAILED", 500) from error
         finally:
             connection.close()
 

@@ -4,6 +4,7 @@ import type { CompetencyMap, RiskPanel as RiskPanelData } from "./api";
 
 type RiskPanelProps = {
   competencyMap: CompetencyMap;
+  skillNames?: Record<string, string>;
   panel: RiskPanelData | null;
   error: string | null;
   savedMessage: string | null;
@@ -13,6 +14,7 @@ type RiskPanelProps = {
 
 export default function RiskPanel({
   competencyMap,
+  skillNames = {},
   panel,
   error,
   savedMessage,
@@ -93,7 +95,7 @@ export default function RiskPanel({
         >
           {competencyMap.skills.map((skill) => (
             <option key={skill.skill_id} value={skill.skill_id}>
-              {skill.holders.find((holder) => holder.skill_name)?.skill_name ?? skill.skill_id}
+              {skill.holders.find((holder) => holder.skill_name)?.skill_name ?? skillNames[skill.skill_id] ?? skill.skill_id}
             </option>
           ))}
         </select>

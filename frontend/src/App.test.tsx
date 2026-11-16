@@ -86,6 +86,10 @@ const alternativeExplanation = {
   error: null,
 };
 
+const scenarioList = [
+  { scenario_id: "S-001", scenario_name: "Baseline", scenario_type: "BASE", project_id: "P-001", project_name: "Atlas" },
+];
+
 function stubMapAndRiskPanel() {
   vi.stubGlobal(
     "fetch",
@@ -94,6 +98,7 @@ function stubMapAndRiskPanel() {
       if (url.endsWith("/auth/me")) {
         return { ok: true, json: async () => ({ actor_id: "A0091250", can_view: true, can_edit: false }) };
       }
+      if (url === "/api/scenarios") return { ok: true, json: async () => scenarioList };
       return {
         ok: true,
         json: async () => (url.includes("risk-panel") ? riskPanel : competencyMap),
@@ -145,7 +150,7 @@ describe("competency map", () => {
 
     await screen.findByRole("region", { name: "Tabela de cobertura de competências" });
     const wordmark = screen.getByRole("link", { name: "voSkill, ir ao conteúdo" });
-    const scenarioInput = screen.getByRole("textbox", { name: "Cenário" });
+    const scenarioInput = screen.getByRole("combobox", { name: "Cenário" });
     const loadButton = screen.getByRole("button", { name: "Carregar mapa" });
     const signOutButton = screen.getByRole("button", { name: "Sair" });
     const tableRegion = screen.getByRole("region", {
@@ -173,6 +178,7 @@ describe("competency map", () => {
       if (init?.method === "PUT") {
         return { ok: true, json: async () => ({ ...riskPanel.thresholds, JAVA: 3 }) };
       }
+      if (url === "/api/scenarios") return { ok: true, json: async () => scenarioList };
       return {
         ok: true,
         json: async () => (url.includes("risk-panel") ? riskPanel : competencyMap),
@@ -210,6 +216,10 @@ describe("competency map", () => {
         if (url.endsWith("/auth/me")) {
           return { ok: true, json: async () => ({ actor_id: "A0091250", can_view: true, can_edit: false }) };
         }
+        if (url === "/api/scenarios") return { ok: true, json: async () => scenarioList };
+        if (url === "/api/optimization-runs") {
+          return { ok: true, json: async () => [{ run_id: "RUN-001", created_at: "2026-11-09T12:00:00Z", scenario_name: "Baseline", project_name: "Atlas", alternative_ids: ["A-001"] }] };
+        }
         return {
           ok: true,
           json: async () =>
@@ -224,8 +234,9 @@ describe("competency map", () => {
     render(<App />);
 
     await screen.findByRole("button", { name: "Carregar mapa" });
-    await user.type(screen.getByRole("textbox", { name: "ID da execução para consultar explicação" }), "RUN-001");
-    await user.type(screen.getByRole("textbox", { name: "ID da alternativa" }), "A-001");
+    await screen.findByRole("option", { name: /Atlas · Baseline · / });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Execução" }), "RUN-001");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Alternativa" }), "A-001");
     await user.click(screen.getByRole("button", { name: "Consultar explicação" }));
 
     expect(await screen.findByText("Apoio à decisão")).toBeInTheDocument();
@@ -252,7 +263,7 @@ describe("competency map", () => {
         authenticated = false;
         return { ok: true, status: 204, json: async () => null };
       }
-      return { ok: true, json: async () => (url.includes("risk-panel") ? riskPanel : competencyMap) };
+      return { ok: true, json: async () => (url === "/api/scenarios" ? scenarioList : url.includes("risk-panel") ? riskPanel : competencyMap) };
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<App />);
@@ -265,5 +276,66 @@ describe("competency map", () => {
     await user.click(screen.getByRole("button", { name: "Sair" }));
     expect(await screen.findByLabelText("Matrícula")).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("lets the user pick a registered scenario by name and loads its map", async () => {
+    const user = userEvent.setup();
+    const scenarios = [
+      ...scenarioList,
+      { scenario_id: "S-002", scenario_name: "Cenário Q3", scenario_type: "BASE", project_id: "P-001", project_name: "Atlas" },
+    ];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/auth/me")) {
+        return { ok: true, json: async () => ({ actor_id: "A0091250", can_view: true, can_edit: false }) };
+      }
+      if (url === "/api/scenarios") return { ok: true, json: async () => scenarios };
+      return { ok: true, json: async () => (url.includes("risk-panel") ? riskPanel : competencyMap) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    const select = await screen.findByRole("combobox", { name: "Cenário" });
+    await screen.findByRole("table");
+    expect(within(select).getByRole("option", { name: "Atlas · Cenário Q3" })).toBeInTheDocument();
+    await user.selectOptions(select, "S-002");
+    await user.click(screen.getByRole("button", { name: "Carregar mapa" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/scenarios/S-002/competency-map", expect.anything()));
+  });
+
+  it("shows project, scenario and skill names instead of ids", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/auth/me")) {
+        return { ok: true, json: async () => ({ actor_id: "A0091250", can_view: true, can_edit: false }) };
+      }
+      if (url === "/api/scenarios") return { ok: true, json: async () => scenarioList };
+      if (url === "/api/skills") return { ok: true, json: async () => [{ skill_id: "CLOUD", skill_name: "Nuvem", description: null }] };
+      return { ok: true, json: async () => (url.includes("risk-panel") ? riskPanel : competencyMap) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    const table = await screen.findByRole("table");
+    expect(within(table).getByRole("rowheader", { name: "Nuvem" })).toBeInTheDocument();
+    expect(within(table).queryByText("CLOUD")).not.toBeInTheDocument();
+    expect(screen.getByText(/Projeto Atlas/)).toHaveTextContent("Projeto Atlas · Cenário Baseline");
+  });
+
+  it("guides the user to create a scenario when none exists", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/auth/me")) {
+        return { ok: true, json: async () => ({ actor_id: "A0091250", can_view: true, can_edit: false }) };
+      }
+      return { ok: true, json: async () => [] };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    expect(await screen.findByText("Crie um cenário-base abaixo para consultar a cobertura")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Carregar mapa" })).toBeDisabled();
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("competency-map"), expect.anything());
   });
 });

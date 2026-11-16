@@ -92,7 +92,11 @@ function stubDashboardFetch() {
     if (url.endsWith("/auth/me")) {
       return { ok: true, json: async () => ({ actor_id: "A0091250", can_view: true, can_edit: false }) };
     }
-    const body = url.includes("competency-map")
+    const body = url === "/api/scenarios"
+      ? [{ scenario_id: "S-001", scenario_name: "Baseline", scenario_type: "BASE", project_id: "P-001", project_name: "Atlas" }, { scenario_id: "S-002", scenario_name: "Q3", scenario_type: "BASE", project_id: "P-001", project_name: "Atlas" }]
+      : url === "/api/optimization-runs"
+        ? [{ run_id: "RUN-001", created_at: "2026-11-09T12:00:00Z", scenario_name: "Baseline", project_name: "Atlas", alternative_ids: ["A-001", "A-002"] }]
+        : url.includes("competency-map")
       ? competencyMap
       : url.includes("risk-panel")
         ? riskPanel
@@ -117,8 +121,9 @@ describe("accessible comparison panel", () => {
     render(<App />);
 
     await user.click(await screen.findByRole("tab", { name: "Cenários" }));
-    await user.type(screen.getByRole("textbox", { name: "Cenário base" }), "S-001");
-    await user.type(screen.getByRole("textbox", { name: "Cenário para comparar" }), "S-002");
+    await screen.findAllByRole("option", { name: "Atlas · Q3" });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Cenário base" }), "S-001");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Cenário para comparar" }), "S-002");
     await user.click(screen.getByRole("button", { name: "Comparar cenários" }));
 
     const results = await screen.findByRole("region", { name: "Comparação de cenários" });
@@ -137,9 +142,10 @@ describe("accessible comparison panel", () => {
 
     await user.click(await screen.findByRole("tab", { name: "Alternativas" }));
     const panel = screen.getByRole("tabpanel", { name: "Alternativas" });
-    await user.type(within(panel).getByRole("textbox", { name: "ID da execução" }), "RUN-001");
-    await user.type(within(panel).getByRole("textbox", { name: "Alternativa 1" }), "A-001");
-    await user.type(within(panel).getByRole("textbox", { name: "Alternativa 2" }), "A-002");
+    await within(panel).findByRole("option", { name: /Atlas · Baseline · / });
+    await user.selectOptions(within(panel).getByRole("combobox", { name: "Execução" }), "RUN-001");
+    await user.selectOptions(within(panel).getByRole("combobox", { name: "Alternativa 1" }), "A-001");
+    await user.selectOptions(within(panel).getByRole("combobox", { name: "Alternativa 2" }), "A-002");
     await user.click(within(panel).getByRole("button", { name: "Comparar alternativas" }));
 
     const results = await screen.findByRole("region", { name: "Comparação de alternativas" });
@@ -174,8 +180,9 @@ describe("accessible comparison panel", () => {
     render(<App />);
 
     const panel = await screen.findByRole("tabpanel", { name: "Cenários" });
-    await user.type(within(panel).getByRole("textbox", { name: "Cenário base" }), "S-001");
-    await user.type(within(panel).getByRole("textbox", { name: "Cenário para comparar" }), "S-002");
+    await within(panel).findAllByRole("option", { name: "Atlas · Q3" });
+    await user.selectOptions(within(panel).getByRole("combobox", { name: "Cenário base" }), "S-001");
+    await user.selectOptions(within(panel).getByRole("combobox", { name: "Cenário para comparar" }), "S-002");
     await user.click(within(panel).getByRole("button", { name: "Comparar cenários" }));
 
     const results = await screen.findByRole("region", { name: "Comparação de cenários" });

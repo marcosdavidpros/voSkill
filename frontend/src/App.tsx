@@ -4,12 +4,17 @@ import {
   fetchCompetencyMap,
   fetchAuthenticatedPrincipal,
   fetchRiskPanel,
+  fetchOptimizationRuns,
+  fetchScenarios,
+  fetchSkills,
   saveCriticalSkillThreshold,
   createSession,
   endSession,
   type CompetencyMap,
   type AuthenticatedPrincipal,
+  type OptimizationRunSummary,
   type RiskPanel as RiskPanelData,
+  type ScenarioOption,
 } from "./api";
 import ComparisonPanel from "./ComparisonPanel";
 import CompetencyPanel from "./CompetencyPanel";
@@ -34,7 +39,10 @@ export default function App() {
   const [principal, setPrincipal] = useState<AuthenticatedPrincipal | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [scenarioId, setScenarioId] = useState("S-001");
+  const [scenarioId, setScenarioId] = useState("");
+  const [scenarios, setScenarios] = useState<ScenarioOption[]>([]);
+  const [skillNames, setSkillNames] = useState<Record<string, string>>({});
+  const [runs, setRuns] = useState<OptimizationRunSummary[]>([]);
   const [competencyMap, setCompetencyMap] = useState<CompetencyMap | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -62,6 +70,21 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function refreshRuns() {
+    const loaded = await fetchOptimizationRuns().catch(() => []);
+    setRuns(Array.isArray(loaded) ? loaded : []);
+  }
+
+  async function refreshScenarios(preferredId?: string) {
+    const [loaded, skills] = await Promise.all([fetchScenarios().catch(() => []), fetchSkills().catch(() => [])]);
+    const options = Array.isArray(loaded) ? loaded : [];
+    setScenarios(options);
+    setSkillNames(Array.isArray(skills) ? Object.fromEntries(skills.map((skill) => [skill.skill_id, skill.skill_name])) : {});
+    const selected = options.find((option) => option.scenario_id === preferredId) ?? options[0];
+    setScenarioId(selected?.scenario_id ?? "");
+    if (selected) await loadMap(selected.scenario_id);
   }
 
   async function saveRiskThreshold(skillId: string, threshold: number) {
@@ -101,7 +124,8 @@ export default function App() {
 
   useEffect(() => {
     if (!authReady || !principal?.can_view) return;
-    void loadMap("S-001");
+    void refreshScenarios();
+    void refreshRuns();
   }, [authReady, principal?.actor_id]);
 
   async function signIn(username: string, password: string) {
@@ -126,12 +150,15 @@ export default function App() {
     }
   }
 
+  const currentScenario = scenarios.find((option) => option.scenario_id === competencyMap?.scenario_id);
   const statusCounts = statusOrder.map((status) =>
     competencyMap?.skills.filter((skill) => skill.status === status).length ?? 0,
   );
   const coverageText = competencyMap
     ? `${competencyMap.coverage.confirmed_count} de ${competencyMap.coverage.skill_count} skills com cobertura confirmada`
-    : "Selecione um cenário para consultar a cobertura";
+    : scenarios.length === 0
+      ? "Crie um cenário-base abaixo para consultar a cobertura"
+      : "Selecione um cenário para consultar a cobertura";
 
   function submitScenario(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -181,13 +208,20 @@ export default function App() {
           </div>
           <form className="scenario-form" onSubmit={submitScenario}>
             <label htmlFor="scenario-id">Cenário</label>
-            <input
+            <select
               id="scenario-id"
               name="scenarioId"
               value={scenarioId}
-              onChange={(event) => setScenarioId(event.target.value)}
-              autoComplete="off"
-            />
+              onChange={(event) => { setScenarioId(event.target.value); void loadMap(event.target.value); }}
+              disabled={scenarios.length === 0}
+            >
+              {scenarios.length === 0 && <option value="">Nenhum cenário criado</option>}
+              {scenarios.map((option) => (
+                <option key={option.scenario_id} value={option.scenario_id}>
+                  {option.project_name} · {option.scenario_name}
+                </option>
+              ))}
+            </select>
             <button type="submit" disabled={loading || !scenarioId.trim()}>
               {loading ? "Carregando…" : "Carregar mapa"}
             </button>
@@ -221,7 +255,7 @@ export default function App() {
                   <h2 id="distribution-heading">Estados por skill</h2>
                 </div>
                 <p className="scenario-meta">
-                  Projeto {competencyMap.project_id} <span aria-hidden="true">·</span> Cenário {competencyMap.scenario_id}
+                  Projeto {currentScenario?.project_name ?? competencyMap.project_id} <span aria-hidden="true">·</span> Cenário {currentScenario?.scenario_name ?? competencyMap.scenario_id}
                 </p>
               </div>
               <div
@@ -296,7 +330,7 @@ export default function App() {
                   <tbody>
                     {competencyMap.skills.map((skill) => (
                       <tr key={skill.skill_id}>
-                        <th scope="row">{skill.holders.find((holder) => holder.skill_name)?.skill_name ?? skill.skill_id}</th>
+                        <th scope="row">{skill.holders.find((holder) => holder.skill_name)?.skill_name ?? skillNames[skill.skill_id] ?? skill.skill_id}</th>
                         <td>
                           <span className={`status-label status-${skill.status}`}>
                             <span className="status-marker" aria-hidden="true" />
@@ -343,6 +377,7 @@ export default function App() {
             <RiskPanel
               key={competencyMap.scenario_id}
               competencyMap={competencyMap}
+              skillNames={skillNames}
               panel={riskPanel}
               error={riskPanelError}
               savedMessage={riskSavedMessage}
@@ -351,12 +386,12 @@ export default function App() {
             />
           </>
         )}
-        <DecisionSupportPanel />
-        <ComparisonPanel />
+        <DecisionSupportPanel runs={runs} />
+        <ComparisonPanel scenarios={scenarios} runs={runs} />
         <CompetencyPanel />
         <ProjectPanel />
-        <ScenarioSetup onCreated={(createdScenarioId) => { setScenarioId(createdScenarioId); void loadMap(createdScenarioId); }} />
-        <OptimizationPanel scenarioId={scenarioId} />
+        <ScenarioSetup onCreated={(createdScenarioId) => { void refreshScenarios(createdScenarioId); }} />
+        <OptimizationPanel scenarioId={scenarioId} scenarios={scenarios} onScenarioChange={(id) => { setScenarioId(id); void loadMap(id); }} onRunCreated={() => void refreshRuns()} />
       </main>
     </div>
   );

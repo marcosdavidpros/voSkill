@@ -11,8 +11,19 @@ from voskill.scenario_comparison import ScenarioError
 
 
 class FakeCursor:
-    def __init__(self, *, person_exists: bool = True) -> None:
+    def __init__(
+        self,
+        *,
+        person_exists: bool = True,
+        scenario_row: tuple[object, ...] | None = ("PRJ-001", "BASE"),
+        alternatives: int = 0,
+        name_taken: bool = False,
+    ) -> None:
         self.person_exists = person_exists
+        self.scenario_row = scenario_row
+        self.alternatives = alternatives
+        self.name_taken = name_taken
+        self.update_params: dict[str, object] | None = None
         self.one = None
         self.rows = []
         self.statements: list[tuple[str, dict[str, object]]] = []
@@ -27,10 +38,16 @@ class FakeCursor:
 
     def execute(self, statement: str, **binds: object) -> None:
         self.statements.append((statement, binds))
-        if "FROM VSK_PROJECTS" in statement:
+        if "SELECT PROJECT_ID, SCENARIO_TYPE" in statement:
+            self.one = self.scenario_row
+        elif "SELECT COUNT(*)" in statement and "BASE_SCENARIO_ID" in statement:
+            self.one = (self.alternatives,)
+        elif "UPDATE VSK_SCENARIOS" in statement:
+            self.update_params = binds
+        elif "FROM VSK_PROJECTS" in statement:
             self.one = (date(2026, 1, 1), date(2026, 12, 1), "hours")
         elif "SELECT SCENARIO_ID" in statement and "FROM VSK_SCENARIOS" in statement:
-            self.one = None
+            self.one = ("OTHER",) if self.name_taken else None
         elif "FROM VSK_PROJECT_DEMANDS" in statement:
             self.rows = [("D-001", "SKILL-1", 3, date(2026, 1, 1), Decimal(10), "hours")]
         elif "FROM VSK_PERSONS" in statement:
@@ -41,6 +58,8 @@ class FakeCursor:
             self.snapshot_params = binds
         elif "INSERT INTO VSK_SCENARIOS" in statement:
             self.scenario_params = binds
+        elif "SELECT S.SCENARIO_ID, S.SCENARIO_NAME" in statement:
+            self.rows = [("SCN-001", "Baseline", "BASE", "PRJ-001", "Atlas")]
         elif "SELECT S.SCENARIO_TYPE, P.SNAPSHOT_JSON" in statement:
             self.one = ("BASE", json.dumps({
                 "snapshot_id": "SNP-001",
@@ -135,6 +154,72 @@ def test_availability_period_outside_horizon_is_rejected_without_persistence() -
     assert cursor.snapshot_params is None
     assert connection.commits == 0
     assert connection.rollbacks == 1
+
+
+def test_update_base_scenario_creates_new_snapshot_and_repoints_scenario() -> None:
+    cursor = FakeCursor()
+    connection = FakeConnection(cursor)
+    repository = BaseScenarioRepository(lambda: connection)
+
+    result = repository.update_base_scenario("SCN-001", "Renamed", _participants(), "A0091250")
+
+    assert result["scenario_id"] == "SCN-001"
+    assert result["scenario_name"] == "Renamed"
+    assert result["project_id"] == "PRJ-001"
+    UUID(result["snapshot_id"])
+    assert cursor.snapshot_params is not None
+    assert cursor.snapshot_params["snapshot_id"] == result["snapshot_id"]
+    assert cursor.update_params == {
+        "scenario_id": "SCN-001",
+        "snapshot_id": result["snapshot_id"],
+        "scenario_name": "Renamed",
+    }
+    assert cursor.scenario_params is None
+    assert connection.commits == 1
+    assert connection.closed is True
+
+
+@pytest.mark.parametrize(
+    ("cursor_kwargs", "code", "status"),
+    [
+        ({"scenario_row": None}, "SCENARIO_NOT_FOUND", 404),
+        ({"scenario_row": ("PRJ-001", "ALTERNATIVE")}, "SCENARIO_NOT_EDITABLE", 422),
+        ({"alternatives": 2}, "SCENARIO_HAS_ALTERNATIVES", 409),
+        ({"name_taken": True}, "SCENARIO_ALREADY_EXISTS", 409),
+    ],
+)
+def test_update_base_scenario_rejects_without_persisting(
+    cursor_kwargs: dict[str, object], code: str, status: int
+) -> None:
+    cursor = FakeCursor(**cursor_kwargs)
+    connection = FakeConnection(cursor)
+    repository = BaseScenarioRepository(lambda: connection)
+
+    with pytest.raises(ScenarioError) as error:
+        repository.update_base_scenario("SCN-001", "Renamed", _participants(), "A0091250")
+
+    assert (error.value.code, error.value.status_code) == (code, status)
+    assert cursor.snapshot_params is None
+    assert cursor.update_params is None
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
+
+
+def test_list_scenarios_returns_names_with_project_names() -> None:
+    cursor = FakeCursor()
+    connection = FakeConnection(cursor)
+    repository = BaseScenarioRepository(lambda: connection)
+
+    scenarios = repository.list_scenarios()
+
+    assert scenarios == [{
+        "scenario_id": "SCN-001",
+        "scenario_name": "Baseline",
+        "scenario_type": "BASE",
+        "project_id": "PRJ-001",
+        "project_name": "Atlas",
+    }]
+    assert connection.closed is True
 
 
 def test_get_optimizer_snapshot_returns_saved_profiles_and_demands() -> None:

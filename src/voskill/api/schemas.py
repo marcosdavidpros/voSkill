@@ -100,6 +100,14 @@ class BaseScenarioResponse(BaseModel):
     scenario_type: Literal["BASE"]
 
 
+class ScenarioListItemResponse(BaseModel):
+    scenario_id: str
+    scenario_name: str
+    scenario_type: str
+    project_id: str
+    project_name: str
+
+
 class OptimizerSnapshotResponse(BaseModel):
     snapshot_id: str
     profiles: list[dict[str, object]]
@@ -246,6 +254,14 @@ class OptimizationRunPayload(BaseModel):
     seed: int
     population_size: int = Field(default=64, ge=2, le=10000)
     generations: int = Field(default=40, ge=1, le=10000)
+
+
+class OptimizationRunSummaryResponse(BaseModel):
+    run_id: str
+    created_at: datetime
+    scenario_name: str | None
+    project_name: str | None
+    alternative_ids: list[str]
 
 
 class OptimizationRunResponse(BaseModel):

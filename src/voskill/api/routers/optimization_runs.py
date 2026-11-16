@@ -27,6 +27,7 @@ from ..schemas import (
     AlternativeExplanationResponse,
     OptimizationRunPayload,
     OptimizationRunResponse,
+    OptimizationRunSummaryResponse,
 )
 
 router = APIRouter()
@@ -55,6 +56,15 @@ def create_optimization_run(
         raise_optimization_run_error(error)
     except ValueError:
         raise_optimization_run_error(OptimizationRunError("INVALID_OPTIMIZATION_INPUT", 422))
+
+
+@router.get("/optimization-runs", response_model=list[OptimizationRunSummaryResponse])
+def list_optimization_runs(
+    access: Annotated[tuple[str, bool], Depends(get_optimization_run_access)],
+    repository: Annotated[OptimizationRunRepository, Depends(get_optimization_run_repository)],
+) -> list[dict[str, object]]:
+    actor_id, can_audit = access
+    return repository.list_runs(actor_id, can_audit)
 
 
 @router.get("/optimization-runs/{run_id}", response_model=OptimizationRunResponse)

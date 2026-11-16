@@ -96,7 +96,7 @@ export type OptimizationRun = {
   };
 };
 
-async function catalogRequest<T>(path: string, method: "GET" | "POST", payload?: object): Promise<T> {
+async function catalogRequest<T>(path: string, method: "GET" | "POST" | "PUT", payload?: object): Promise<T> {
   const response = await fetch(`/api/${path}`, {
     method,
     credentials: "include",
@@ -111,6 +111,36 @@ async function catalogRequest<T>(path: string, method: "GET" | "POST", payload?:
 
 export function fetchPeople(): Promise<CatalogPerson[]> {
   return catalogRequest("people", "GET");
+}
+
+export type ScenarioOption = {
+  scenario_id: string;
+  scenario_name: string;
+  scenario_type: string;
+  project_id: string;
+  project_name: string;
+};
+
+export function fetchScenarios(): Promise<ScenarioOption[]> {
+  return catalogRequest("scenarios", "GET");
+}
+
+export type OptimizationRunSummary = {
+  run_id: string;
+  created_at: string;
+  scenario_name: string | null;
+  project_name: string | null;
+  alternative_ids: string[];
+};
+
+export function fetchOptimizationRuns(): Promise<OptimizationRunSummary[]> {
+  return catalogRequest("optimization-runs", "GET");
+}
+
+export function runLabel(run: OptimizationRunSummary): string {
+  const when = new Date(run.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  const scenario = run.scenario_name ? `${run.project_name} · ${run.scenario_name}` : "Cenário não identificado";
+  return `${scenario} · ${when}`;
 }
 
 export function createPerson(displayName: string): Promise<CatalogPerson> {
@@ -157,6 +187,16 @@ export function createBaseScenario(projectId: string, scenarioName: string, part
   availability: Record<string, number>;
 }[]): Promise<BaseScenario> {
   return catalogRequest(`projects/${encodeURIComponent(projectId)}/scenarios`, "POST", {
+    scenario_name: scenarioName,
+    participants,
+  });
+}
+
+export function updateBaseScenario(scenarioId: string, scenarioName: string, participants: {
+  person_id: string;
+  availability: Record<string, number>;
+}[]): Promise<BaseScenario> {
+  return catalogRequest(`scenarios/${encodeURIComponent(scenarioId)}`, "PUT", {
     scenario_name: scenarioName,
     participants,
   });

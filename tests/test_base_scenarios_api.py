@@ -31,6 +31,85 @@ class MemoryBaseScenarioRepository:
         assert scenario_id == "SCN-001"
         return self.snapshot
 
+    def update_base_scenario(self, scenario_id: str, **values: object) -> dict[str, object]:
+        self.updated = {"scenario_id": scenario_id, **values}
+        return {
+            "scenario_id": scenario_id,
+            "snapshot_id": "SNP-002",
+            "project_id": "PRJ-001",
+            "scenario_name": values["scenario_name"],
+            "scenario_type": "BASE",
+        }
+
+    def list_scenarios(self) -> list[dict[str, object]]:
+        return [{
+            "scenario_id": "SCN-001",
+            "scenario_name": "Baseline",
+            "scenario_type": "BASE",
+            "project_id": "PRJ-001",
+            "project_name": "Atlas",
+        }]
+
+
+def test_update_base_scenario_replaces_name_and_availability() -> None:
+    repository = MemoryBaseScenarioRepository()
+    app.dependency_overrides[get_actor_id] = lambda: "A0091250"
+    app.dependency_overrides[get_base_scenario_repository] = lambda: repository
+    try:
+        response = _request(
+            "PUT",
+            "/scenarios/SCN-001",
+            {
+                "scenario_name": "Renamed",
+                "participants": [{"person_id": "P-001", "availability": {"2026-01": 80}}],
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["scenario_name"] == "Renamed"
+    assert response.json()["snapshot_id"] == "SNP-002"
+    assert repository.updated["scenario_id"] == "SCN-001"
+    assert repository.updated["actor_id"] == "A0091250"
+    assert repository.updated["participants"] == [
+        {"person_id": "P-001", "availability": {"2026-01": 80}}
+    ]
+
+
+def test_update_base_scenario_requires_authentication() -> None:
+    response = _request(
+        "PUT",
+        "/scenarios/SCN-001",
+        {"scenario_name": "Renamed", "participants": []},
+    )
+
+    assert response.status_code == 401
+
+
+def test_list_scenarios_returns_selectable_names() -> None:
+    app.dependency_overrides[get_actor_id] = lambda: "A0091250"
+    app.dependency_overrides[get_base_scenario_repository] = lambda: MemoryBaseScenarioRepository()
+    try:
+        response = _request("GET", "/scenarios")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == [{
+        "scenario_id": "SCN-001",
+        "scenario_name": "Baseline",
+        "scenario_type": "BASE",
+        "project_id": "PRJ-001",
+        "project_name": "Atlas",
+    }]
+
+
+def test_list_scenarios_requires_authentication() -> None:
+    response = _request("GET", "/scenarios")
+
+    assert response.status_code == 401
+
 
 def test_create_base_scenario_persists_participant_availability() -> None:
     repository = MemoryBaseScenarioRepository()

@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { fetchAlternativeExplanation, type AlternativeExplanation } from "./api";
+import { fetchAlternativeExplanation, runLabel, type AlternativeExplanation, type OptimizationRunSummary } from "./api";
 
 function formatMetric(value: unknown): string {
   if (typeof value === "number") {
@@ -13,12 +13,13 @@ function formatMetric(value: unknown): string {
   return String(value);
 }
 
-export default function DecisionSupportPanel() {
+export default function DecisionSupportPanel({ runs }: { runs: OptimizationRunSummary[] }) {
   const [runId, setRunId] = useState("");
   const [alternativeId, setAlternativeId] = useState("");
   const [explanation, setExplanation] = useState<AlternativeExplanation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const alternativesOfRun = runs.find((run) => run.run_id === runId)?.alternative_ids ?? [];
   const directionGroups = Object.entries(explanation?.metric_definitions ?? {}).reduce<Record<string, string[]>>(
     (groups, [name, definition]) => {
       groups[definition.direction] ??= [];
@@ -52,23 +53,28 @@ export default function DecisionSupportPanel() {
       </div>
       <form className="alternative-lookup" onSubmit={submit}>
         <label htmlFor="optimization-run-id">
-          ID da execução
-          <input
+          Execução
+          <select
             id="optimization-run-id"
-            aria-label="ID da execução para consultar explicação"
             value={runId}
-            onChange={(event) => setRunId(event.target.value)}
-            autoComplete="off"
-          />
+            onChange={(event) => { setRunId(event.target.value); setAlternativeId(""); }}
+            disabled={runs.length === 0}
+          >
+            <option value="">{runs.length === 0 ? "Nenhuma execução salva" : "Selecione a execução"}</option>
+            {runs.map((run) => <option key={run.run_id} value={run.run_id}>{runLabel(run)}</option>)}
+          </select>
         </label>
         <label htmlFor="alternative-id">
-          ID da alternativa
-          <input
+          Alternativa
+          <select
             id="alternative-id"
             value={alternativeId}
             onChange={(event) => setAlternativeId(event.target.value)}
-            autoComplete="off"
-          />
+            disabled={alternativesOfRun.length === 0}
+          >
+            <option value="">Selecione a alternativa</option>
+            {alternativesOfRun.map((id) => <option key={id} value={id}>{id}</option>)}
+          </select>
         </label>
         <button type="submit" disabled={loading || !runId.trim() || !alternativeId.trim()}>
           {loading ? "Consultando…" : "Consultar explicação"}

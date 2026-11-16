@@ -115,6 +115,57 @@ class OptimizationRunRepository:
                 }
         finally:
             connection.close()
+    def list_runs(self, actor_id: str, can_audit: bool, limit: int = 50) -> list[dict[str, object]]:
+        connection = self._connection_factory()
+        try:
+            with connection.cursor() as cursor:
+                owner_filter = "" if can_audit else " WHERE ACTOR_ID = :actor_id"
+                cursor.execute(
+                    f"""
+                    SELECT RUN_ID, RESULT_JSON, CREATED_AT
+                      FROM VSK_OPTIMIZATION_RUNS{owner_filter}
+                     ORDER BY CREATED_AT DESC
+                     FETCH FIRST {int(limit)} ROWS ONLY
+                    """,
+                    **({} if can_audit else {"actor_id": actor_id}),
+                )
+                run_rows = cursor.fetchall()
+                cursor.execute(
+                    """
+                    SELECT S.SNAPSHOT_ID, S.SCENARIO_NAME, P.PROJECT_NAME
+                      FROM VSK_SCENARIOS S
+                      JOIN VSK_PROJECTS P ON P.PROJECT_ID = S.PROJECT_ID
+                     WHERE S.SCENARIO_TYPE = 'BASE'
+                    """
+                )
+                names = {str(row[0]): (str(row[1]), str(row[2])) for row in cursor.fetchall()}
+
+            runs: list[dict[str, object]] = []
+            for run_id, result_json, created_at in run_rows:
+                result = _json_value(result_json)
+                result = result if isinstance(result, dict) else {}
+                metadata = result.get("run_metadata")
+                snapshot_id = metadata.get("snapshot_id") if isinstance(metadata, dict) else None
+                scenario_name, project_name = names.get(str(snapshot_id), (None, None))
+                alternatives = result.get("feasible_alternatives")
+                runs.append(
+                    {
+                        "run_id": run_id,
+                        "created_at": created_at,
+                        "scenario_name": scenario_name,
+                        "project_name": project_name,
+                        "alternative_ids": [
+                            str(alternative["alternative_id"])
+                            for alternative in alternatives
+                            if isinstance(alternative, dict) and "alternative_id" in alternative
+                        ]
+                        if isinstance(alternatives, list)
+                        else [],
+                    }
+                )
+            return runs
+        finally:
+            connection.close()
 
 
 def run_optimization(

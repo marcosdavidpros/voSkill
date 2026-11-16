@@ -98,6 +98,12 @@ describe("decision transparency", () => {
         if (url.endsWith("/auth/me")) {
           return { ok: true, json: async () => ({ actor_id: "A0091250", can_view: true, can_edit: false }) };
         }
+        if (url === "/api/scenarios") {
+          return { ok: true, json: async () => [{ scenario_id: "S-001", scenario_name: "Baseline", scenario_type: "BASE", project_id: "P-001", project_name: "Atlas" }] };
+        }
+        if (url === "/api/optimization-runs") {
+          return { ok: true, json: async () => [{ run_id: "RUN-001", created_at: "2026-11-09T12:00:00Z", scenario_name: "Baseline", project_name: "Atlas", alternative_ids: ["A-001"] }] };
+        }
         const body = url.includes("competency-map")
           ? competencyMap
           : url.includes("risk-panel")
@@ -111,8 +117,9 @@ describe("decision transparency", () => {
     expect(await screen.findByText("Origem MANUAL · Revisada em 2026-11-09")).toBeInTheDocument();
     expect(screen.getByText("Fonte JAVA · Relação REL-001")).toBeInTheDocument();
 
-    await user.type(screen.getByRole("textbox", { name: "ID da execução para consultar explicação" }), "RUN-001");
-    await user.type(screen.getByRole("textbox", { name: "ID da alternativa" }), "A-001");
+    await screen.findByRole("option", { name: /Atlas · Baseline · / });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Execução" }), "RUN-001");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Alternativa" }), "A-001");
     await user.click(screen.getByRole("button", { name: "Consultar explicação" }));
 
     expect(await screen.findByText("Lacuna ponderada de competência")).toBeInTheDocument();
